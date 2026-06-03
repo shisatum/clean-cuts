@@ -19,15 +19,15 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 - Any script over ~300 lines is a smell — split it.
 - Use explicit `var x: float = ...` typing whenever GDScript can't infer the type (ternaries, ambiguous returns).
 
-**Current state — M0, M1, M2 are complete:**
+**Current state — M0, M1, M2, M3 are complete:**
 - M0 ✅ Free-fly camera (WASD/QE/Shift/mouselook), crosshair, floor, plank, hitscan raycast logs hits.
 - M1 ✅ Plank is a `CSGCombiner3D`. Clicks bore persistent cylindrical holes aligned to shot direction.
 - M2 ✅ Smooth energy gradient: sub-yield = shallow dent, above-yield = through-hole with radius scaling via sqrt curve up to ultimate. Scroll wheel adjusts shot energy live.
+- M3 ✅ `MaterialData.compute_hole(energy)` owns the gradient. `cavity_shape` (0=needle, 1=crater) controls hole profile. Wood: wide holes. Steel: narrow tunnels. Two planks in scene.
 
-**Next up — M3:**
-- Add steel as a second material (`steel.tres`).
-- Move the radius/depth gradient formula from `DestructibleObject` into `MaterialData` as `compute_hole(energy) -> Vector2`.
-- Add `cavity_shape: float` to `MaterialData` (0.0 = narrow deep needle, 1.0 = wide shallow crater).
-- Wood: wide holes. Steel: narrow deep tunnels.
+**Next up — M4:**
+- Add the Edge/Slash archetype: cut the plank into two independent halves that each keep their existing holes.
+- This is where splitting is re-introduced — and only here.
+- Each half becomes its own `CSGCombiner3D` with its own collision and hole history.
 
 Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M3. Ask before adding anything not listed above.
