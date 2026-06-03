@@ -2,6 +2,9 @@
 
 *A scoped-down path from "stuck for months" to "playable prototype this week." June 2026.*
 
+> **Canonical location:** this file lives at `D:\LOVE\code_projects\Godot\new_physics_project\REALISTIC_PLAN.md`.
+> The copy that used to sit at `D:\LOVE\code_projects\Godot\REALISTIC_PLAN.md` has been deleted.
+
 ---
 
 ## The one-paragraph diagnosis
@@ -87,13 +90,13 @@ No slicing in half. No steel. No house. No island-splitting. No physics projecti
 
 Each milestone must be *fun or stable* before you start the next. If a milestone takes more than a few days, it's too big — cut it in half.
 
-- **M0 — Sandbox.** Free-fly camera, crosshair, a plank, a floor. Click logs a raycast hit. *(No destruction yet.)*
-- **M1 — The MVP above.** Hitscan drill bores persistent, accumulating holes in the plank at 60 fps. **This is the whole game in miniature.**
-- **M2 — Energy threshold.** A weak shot scratches, a strong shot bores through. One `yield` and one `ultimate` number on the material. *(Salvage `MaterialData`.)*
-- **M3 — Second material.** Add steel: same code, different thresholds. Proves data-driven materials.
+- **M0 — Sandbox. ✅** Free-fly camera, crosshair, a plank, a floor. Click logs a raycast hit. *(No destruction yet.)*
+- **M1 — The MVP above. ✅** Hitscan drill bores persistent, accumulating holes in the plank at 60 fps. **This is the whole game in miniature.**
+- **M2 — Energy threshold. ✅** Damage is a smooth gradient: below `yield_strength` leaves a shallow surface dent; above it bores a through-hole whose radius scales continuously with energy (sqrt curve) up to `ultimate_strength`. One `yield` and one `ultimate` number on the material. *(Salvage `MaterialData`.)*
+- **M3 — Second material + damage shape.** Add steel: same code, different thresholds. Move the radius/depth gradient formula out of `DestructibleObject` and into `MaterialData` as a `compute_hole(energy) -> Vector2` method. Add a `cavity_shape: float` property (0.0 = narrow deep needle, 1.0 = wide shallow crater) so each material owns its damage profile. Wood: wide holes. Steel: narrow deep tunnels. When M5 adds projectile materials, multiply the projectile's `penetration_factor` against the target's curve here. Proves data-driven materials.
 - **M4 — The slash.** Add the Edge/Slash archetype: cut the plank into two independent halves that each keep their existing holes. *(This is where you re-introduce splitting — and only here.)*
 - **M5 — Physical projectiles (optional).** *Now* add launched rigid bodies, if you still want them. You'll re-introduce ballistic handling deliberately and in isolation, not as a foundation.
-- **M6+ — Everything else** from the old GDD (house, fasteners, blunt craters, 1000 m/s sniper rounds), one at a time.
+- **M6+ — Everything else** from the old GDD (house, fasteners, blunt craters, 1000 m/s sniper rounds, multiplayer, steam integration), one at a time.
 
 You had most of M2–M4 *working* in the old project. The goal isn't to relearn it — it's to rebuild it on a foundation that doesn't collapse.
 
@@ -128,6 +131,7 @@ These are process rules, not code. They're what actually went wrong.
 3. **Hard file-size ceiling.** Any script over ~300 lines is a smell. Split it.
 4. **Every milestone has a "done test"** like the MVP's four checks above. "Done" is observable, not vibes.
 5. **Profile before optimizing.** No GPU compute shaders, no C++, until a profiler proves GDScript is the bottleneck on real content. It won't be, at this scale.
+5a. **Use strict typing in GDScript.** Declare `var x: float = ...` instead of `var x := ...` whenever the right-hand side is a ternary, a function call with an ambiguous return type, or anything else GDScript can't infer as a concrete type. Variant-typed variables cause parser errors that stop the game cold.
 6. **Pick the feel, then protect it.** You chose clean cuts. Anything that doesn't serve clean-cuts fun (soft-body solvers, multiplayer, character controllers) is out of scope until there's a fun core.
 
 ---

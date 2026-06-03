@@ -1,34 +1,33 @@
-# Kickoff prompt — paste into the new session
+# Kickoff prompt — paste into a new Claude Code session
 
-> Copy everything in the box below into the fresh Sonnet / Code-tab session, pointed at `D:\LOVE\code_projects\Godot\`.
+> **Canonical location:** this file lives at `D:\LOVE\code_projects\Godot\new_physics_project\KICKOFF.md`.
+> Point the session at `D:\LOVE\code_projects\Godot\new_physics_project\` when pasting.
 
 ---
 
-I'm building a 3D destruction sandbox in **Godot 4**. The dream is **clean cuts and persistent holes**: shoot a wooden plank, it keeps the holes; later milestones add slicing it in half. There's a full plan at `D:\LOVE\code_projects\Godot\REALISTIC_PLAN.md` — **read it first**, it's the brief.
+I'm building a 3D destruction sandbox in **Godot 4**. The dream is **clean cuts and persistent holes**: shoot a wooden plank, it keeps the holes; later milestones add slicing it in half. The full plan is at `D:\LOVE\code_projects\Godot\new_physics_project\REALISTIC_PLAN.md` — **read it first**, it's the brief.
 
-Keep in mind the Godot binaries are located in D:\LOVE\code_projects\Godot\Godot_v4.6.3-stable_win64\
+The project lives at `D:\LOVE\code_projects\Godot\new_physics_project\`. Godot binaries are at `D:\LOVE\code_projects\Godot\Godot_v4.6.3-stable_win64\`.
 
-A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-demo\`. Treat it as a **parts bin and reference only — do NOT patch it.** It collapsed into a 2,566-line god-file. We're starting fresh in a **new project folder** under `D:\LOVE\code_projects\Godot\`.
+A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-demo\`. Treat it as a **parts bin and reference only — do NOT patch it.**
 
-**Hard constraints (these are why the last attempt failed — respect them):**
+**Hard constraints:**
 - GDScript only. No C++, no GDExtension, no compute shaders.
-- Physics: Jolt (Godot 4.4+ default). Cutting: built-in CSG (`CSGCombiner3D`).
-- **No physical bullet.** Impacts are a **hitscan raycast** from the crosshair (`intersect_ray` → position, normal, collider). This is non-negotiable; it deletes the entire ballistics-heuristics mess.
+- Physics: Jolt. Cutting: built-in CSG (`CSGCombiner3D`).
+- **No physical bullet.** Impacts are a hitscan raycast (`intersect_ray` → position, normal, collider).
 - One feature at a time. It must run before we add the next.
 - Any script over ~300 lines is a smell — split it.
+- Use explicit `var x: float = ...` typing whenever GDScript can't infer the type (ternaries, ambiguous returns).
 
-**Build M0 first, then STOP so I can run it in Godot and report back. Do not jump ahead to M1.**
+**Current state — M0, M1, M2 are complete:**
+- M0 ✅ Free-fly camera (WASD/QE/Shift/mouselook), crosshair, floor, plank, hitscan raycast logs hits.
+- M1 ✅ Plank is a `CSGCombiner3D`. Clicks bore persistent cylindrical holes aligned to shot direction.
+- M2 ✅ Smooth energy gradient: sub-yield = shallow dent, above-yield = through-hole with radius scaling via sqrt curve up to ultimate. Scroll wheel adjusts shot energy live.
 
-**M0 — Sandbox (build this now):**
-- New Godot 4 project.
-- Free-fly camera with mouse-look + WASD, a crosshair in the center of the screen.
-- A floor (StaticBody3D) and one wooden plank (a box mesh — this will become the destructible).
-- Left-click fires a hitscan raycast from the camera through the crosshair and **prints the hit object, position, and normal** to the console.
-- *Done test:* I can fly around, aim, click, and see correct hit info logged. No destruction yet.
+**Next up — M3:**
+- Add steel as a second material (`steel.tres`).
+- Move the radius/depth gradient formula from `DestructibleObject` into `MaterialData` as `compute_hole(energy) -> Vector2`.
+- Add `cavity_shape: float` to `MaterialData` (0.0 = narrow deep needle, 1.0 = wide shallow crater).
+- Wood: wide holes. Steel: narrow deep tunnels.
 
-**M1 — comes after M0 runs (don't build yet, just keep it in mind):**
-- The plank becomes a `DestructibleObject`. A click subtracts a CSG cylinder (a bored hole) at the hit point, oriented along the hit normal.
-- Holes persist and accumulate; collision updates so a later shot passes through an existing hole.
-- Holds 60 fps, no NaN/explosion.
-
-Start by reading `REALISTIC_PLAN.md`, then scaffold M0. Ask me before adding anything not listed in M0.
+Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M3. Ask before adding anything not listed above.
