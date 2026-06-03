@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/fly_camera.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/destructible_object.gd" id="2"]
 [ext_resource type="Resource" path="res://resources/wood.tres" id="3"]
+[ext_resource type="Resource" path="res://resources/steel.tres" id="4"]
 
 [sub_resource type="StandardMaterial3D" id="MatFloor"]
 albedo_color = Color(0.38, 0.38, 0.38, 1)
@@ -13,8 +14,13 @@ size = Vector3(20.0, 0.4, 20.0)
 [sub_resource type="BoxShape3D" id="ShapeFloor"]
 size = Vector3(20.0, 0.4, 20.0)
 
-[sub_resource type="StandardMaterial3D" id="MatPlank"]
+[sub_resource type="StandardMaterial3D" id="MatWood"]
 albedo_color = Color(0.6, 0.38, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="MatSteel"]
+albedo_color = Color(0.6, 0.65, 0.7, 1)
+metallic = 0.8
+roughness = 0.3
 
 [node name="Main" type="Node3D"]
 
@@ -33,18 +39,28 @@ surface_material_override/0 = SubResource("MatFloor")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
 shape = SubResource("ShapeFloor")
 
-[node name="Plank" type="CSGCombiner3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+[node name="PlankWood" type="CSGCombiner3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.0, 0.4, 0)
 use_collision = true
 script = ExtResource("2")
 material_data = ExtResource("3")
 
-[node name="Body" type="CSGBox3D" parent="Plank"]
+[node name="Body" type="CSGBox3D" parent="PlankWood"]
 size = Vector3(0.15, 0.8, 2.5)
-material = SubResource("MatPlank")
+material = SubResource("MatWood")
+
+[node name="PlankSteel" type="CSGCombiner3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 0.4, 0)
+use_collision = true
+script = ExtResource("2")
+material_data = ExtResource("4")
+
+[node name="Body" type="CSGBox3D" parent="PlankSteel"]
+size = Vector3(0.15, 0.8, 2.5)
+material = SubResource("MatSteel")
 
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.9659, 0.2588, 0, -0.2588, 0.9659, 0, 2.0, 6.0)
+transform = Transform3D(1, 0, 0, 0, 0.9659, 0.2588, 0, -0.2588, 0.9659, 0, 2.0, 8.0)
 script = ExtResource("1")
 
 [node name="HUD" type="CanvasLayer" parent="."]
@@ -76,6 +92,6 @@ text = "Shot Energy: 60"
 layout_mode = 2
 custom_minimum_size = Vector2(220, 0)
 min_value = 0.0
-max_value = 1000.0
-step = 25.0
+max_value = 2500.0
+step = 50.0
 value = 60.0

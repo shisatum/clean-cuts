@@ -4,6 +4,6 @@
 
 [resource]
 script = ExtResource("1")
-yield_strength = 40.0
-ultimate_strength = 800.0
-cavity_shape = 0.8
+yield_strength = 150.0
+ultimate_strength = 2000.0
+cavity_shape = 0.15

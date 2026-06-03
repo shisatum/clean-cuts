@@ -3,9 +3,9 @@ extends Camera3D
 const MOVE_SPEED := 4.0
 const SPRINT_MULT := 3.0
 const MOUSE_SENSITIVITY := 0.0015
-const ENERGY_STEP := 25.0
+const ENERGY_STEP := 50.0
 const ENERGY_MIN := 0.0
-const ENERGY_MAX := 1000.0
+const ENERGY_MAX := 2500.0
 
 @export var shot_energy: float = 60.0
 
