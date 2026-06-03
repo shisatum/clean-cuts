@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/fly_camera.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/destructible_object.gd" id="2"]
+[ext_resource type="Resource" path="res://resources/wood.tres" id="3"]
 
 [sub_resource type="StandardMaterial3D" id="MatFloor"]
 albedo_color = Color(0.38, 0.38, 0.38, 1)
@@ -36,6 +37,7 @@ shape = SubResource("ShapeFloor")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
 use_collision = true
 script = ExtResource("2")
+material_data = ExtResource("3")
 
 [node name="Body" type="CSGBox3D" parent="Plank"]
 size = Vector3(0.15, 0.8, 2.5)
@@ -59,3 +61,21 @@ mouse_filter = 2
 custom_minimum_size = Vector2(6, 6)
 layout_mode = 2
 color = Color(1, 1, 1, 0.85)
+
+[node name="EnergyPanel" type="VBoxContainer" parent="HUD"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 230.0
+offset_bottom = 58.0
+
+[node name="EnergyLabel" type="Label" parent="HUD/EnergyPanel"]
+layout_mode = 2
+text = "Shot Energy: 60"
+
+[node name="EnergySlider" type="HSlider" parent="HUD/EnergyPanel"]
+layout_mode = 2
+custom_minimum_size = Vector2(220, 0)
+min_value = 0.0
+max_value = 1000.0
+step = 25.0
+value = 60.0

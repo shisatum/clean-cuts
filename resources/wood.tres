@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="MaterialData" format=3]
+
+[ext_resource type="Script" path="res://scripts/material_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+yield_strength = 40.0
+ultimate_strength = 800.0
