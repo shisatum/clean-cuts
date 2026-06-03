@@ -28,4 +28,4 @@ If they're stale, the next session starts blind.
 - Project: `D:\LOVE\code_projects\Godot\new_physics_project\`
 - Godot binaries: `D:\LOVE\code_projects\Godot\Godot_v4.6.3-stable_win64\`
 - Reference (parts bin only, do not patch): `D:\LOVE\code_projects\Godot\material-destruction-demo\`
-- GitHub: `https://github.com/shisatum/clean-cuts` (private)
+- GitHub: `https://github.com/shisatum/clean-cuts` (public)
