@@ -99,6 +99,13 @@ func _fire() -> void:
 		hit.normal.snapped(Vector3.ONE * 0.001),
 	])
 
+	# Push dynamic fragments — applied at the hit point so we get torque too.
+	if hit.collider is RigidBody3D:
+		var mag: float = clamp(shot_energy * 0.002, 0.5, 6.0)
+		var impulse: Vector3 = -global_transform.basis.z * mag
+		(hit.collider as RigidBody3D).apply_impulse(
+			impulse, hit.collider.to_local(hit.position))
+
 	var target: Node = hit.collider
 	if not target.has_method("apply_hole"):
 		target = target.get_parent()
