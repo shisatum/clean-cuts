@@ -16,15 +16,6 @@ func _ready() -> void:
 	var body_nd := get_node_or_null("Body")
 	if body_nd is CSGBox3D:
 		body_size = (body_nd as CSGBox3D).size
-	# CSGCombiner3D with use_collision=true generates an internal StaticBody3D.
-	# Add it to layer 2 so the camera raycast (layer 2 only) can detect it.
-	call_deferred("_configure_raycast_layer")
-
-func _configure_raycast_layer() -> void:
-	for child: Node in get_children(true):
-		if child is StaticBody3D:
-			(child as StaticBody3D).collision_layer |= 2
-			return
 
 func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> void:
 	var hole: Vector2 = material_data.compute_hole(energy) if material_data \

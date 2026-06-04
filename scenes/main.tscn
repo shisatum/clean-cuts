@@ -43,6 +43,7 @@ shape = SubResource("ShapeFloor")
 [node name="PlankWood" type="CSGCombiner3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.0, 0.4, 0)
 use_collision = true
+collision_layer = 2
 script = ExtResource("2")
 material_data = ExtResource("3")
 
@@ -53,6 +54,7 @@ material = SubResource("MatWood")
 [node name="PlankSteel" type="CSGCombiner3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 0.4, 0)
 use_collision = true
+collision_layer = 2
 script = ExtResource("2")
 material_data = ExtResource("4")
 
