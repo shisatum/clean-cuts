@@ -16,8 +16,6 @@ var _ray_col: CollisionShape3D   # concave raycast shape on Area3D (layer 2)
 var _body_material: Material     # stored explicitly so sub-fragments always inherit it
 var _last_hit_dir: Vector3
 var _severing := false
-# Coverage at creation time — threshold only fires if new damage pushes meaningfully higher.
-var _coverage_baseline: float = 0.0
 
 # Called by the spawning script immediately after add_child().
 func setup(size: Vector3, mat: MaterialData, body_mat: Material,
@@ -52,20 +50,6 @@ func setup(size: Vector3, mat: MaterialData, body_mat: Material,
 	ray_area.add_child(_ray_col)
 
 	call_deferred("_rebuild_collision")
-	call_deferred("_set_coverage_baseline")
-
-func _set_coverage_baseline() -> void:
-	if not is_inside_tree():
-		return
-	var holes: Array = _csg.get_children().filter(
-		func(c: Node) -> bool:
-			return c is CSGCylinder3D \
-				and (c as CSGCylinder3D).operation == CSGShape3D.OPERATION_SUBTRACTION
-	)
-	var dims: Vector3i          = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
-	var voxels: PackedByteArray = VoxelConnectivity.build_grid(body_size, dims, holes)
-	_coverage_baseline = VoxelConnectivity.weakest_section(
-		voxels, dims, _thinnest_axis(body_size)).coverage
 
 # Adds one solid box to build up the fragment's base shape voxel-by-voxel.
 func add_body_box(local_pos: Vector3, sz: Vector3) -> void:
@@ -124,7 +108,6 @@ func _check_connectivity() -> void:
 		return
 	_severing = true
 
-	# Build label array so each hole is assigned to exactly the island that owns it.
 	var labels := PackedInt32Array()
 	labels.resize(voxels.size())
 	labels.fill(-1)
@@ -133,34 +116,31 @@ func _check_connectivity() -> void:
 			labels[idx] = i
 
 	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+	var n_islands: int     = islands.size()
 	var body_mat: Material = _body_material
-	var centroids: Array[Vector3] = []
-	for i: int in range(islands.size()):
-		centroids.append(VoxelConnectivity.island_centroid(islands[i], dims, body_size))
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims, centroids)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims, n_islands)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
-		centroids: Array[Vector3]) -> void:
+		n_islands: int) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
-	frag.setup(sz, material_data, body_mat, false)  # skip single AABB box
+	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
-	# Build shape from tight voxel boxes — no AABB overflow, no clip planes needed
 	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
 		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
 		frag.add_body_box(a.center - lc, a.size)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
-		var in_this: bool = _hole_in_island(cyl.position, island_idx, labels, dims)
+		var in_this: bool  = _hole_in_island(cyl.position, island_idx, labels, dims)
 		var in_other: bool = false
-		for j: int in range(centroids.size()):
+		for j: int in range(n_islands):
 			if j != island_idx and _hole_in_island(cyl.position, j, labels, dims):
 				in_other = true
 				break
@@ -170,8 +150,6 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
 
-# Returns true if body_local_pos (or any 1-voxel neighbour) belongs to island_label.
-# The neighbourhood ensures holes straddling island boundaries appear in both fragments.
 func _hole_in_island(body_local_pos: Vector3, island_label: int,
 		labels: PackedInt32Array, dims: Vector3i) -> bool:
 	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
@@ -198,13 +176,6 @@ func _rebuild_collision() -> void:
 		return
 	if _ray_col:
 		_ray_col.shape = (meshes[1] as ArrayMesh).create_trimesh_shape()
-
-func _thinnest_axis(sz: Vector3) -> int:
-	if sz.x <= sz.y and sz.x <= sz.z:
-		return 0
-	elif sz.y <= sz.z:
-		return 1
-	return 2
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()

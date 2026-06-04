@@ -91,59 +91,6 @@ static func aabb_to_local(mn: Vector3i, mx: Vector3i, dims: Vector3i, body_size:
 	var hi: Vector3 = origin + Vector3((mx.x + 1) * cell.x, (mx.y + 1) * cell.y, (mx.z + 1) * cell.z)
 	return {center = (lo + hi) * 0.5, size = hi - lo}
 
-# Returns the most-voided cross-section along ONE specific axis.
-# Returns {pos: int, coverage: float} where coverage = fraction voided.
-# Callers should pass the thinnest body dimension axis so that face-penetrating
-# shots (which void slices on the perpendicular axes) don't trigger false splits.
-static func weakest_section(voxels: PackedByteArray, dims: Vector3i, axis: int) -> Dictionary:
-	var ax_len: int = dims.x if axis == 0 else (dims.y if axis == 1 else dims.z)
-	var void_counts := PackedInt32Array()
-	void_counts.resize(ax_len)
-	void_counts.fill(0)
-	var totals := PackedInt32Array()
-	totals.resize(ax_len)
-	totals.fill(0)
-	for zi: int in range(dims.z):
-		for yi: int in range(dims.y):
-			for xi: int in range(dims.x):
-				var idx: int = xi + yi * dims.x + zi * dims.x * dims.y
-				var coord: int = xi if axis == 0 else (yi if axis == 1 else zi)
-				totals[coord] += 1
-				if voxels[idx] == 0:
-					void_counts[coord] += 1
-	var best := {pos = 0, coverage = 0.0}
-	for pos: int in range(ax_len):
-		var cov: float = float(void_counts[pos]) / float(totals[pos])
-		if cov > best.coverage:
-			best = {pos = pos, coverage = cov}
-	return best
-
-# Splits all voxel indices into two groups along axis at pos.
-# Used to force a planar sever when sever_threshold is exceeded.
-static func split_at_plane(dims: Vector3i, axis: int, pos: int) -> Array[PackedInt32Array]:
-	var a := PackedInt32Array()
-	var b := PackedInt32Array()
-	for zi: int in range(dims.z):
-		for yi: int in range(dims.y):
-			for xi: int in range(dims.x):
-				var coord: int = xi if axis == 0 else (yi if axis == 1 else zi)
-				if coord <= pos:
-					a.append(xi + yi * dims.x + zi * dims.x * dims.y)
-				else:
-					b.append(xi + yi * dims.x + zi * dims.x * dims.y)
-	var result: Array[PackedInt32Array] = [a, b]
-	return result
-
-# Returns the centroid of an island's voxels in body local space.
-static func island_centroid(island: PackedInt32Array, dims: Vector3i, body_size: Vector3) -> Vector3:
-	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
-	var origin := Vector3(-body_size.x * 0.5, -body_size.y * 0.5, -body_size.z * 0.5)
-	var sum := Vector3.ZERO
-	for raw: int in island:
-		var v := Vector3i(raw % dims.x, (raw / dims.x) % dims.y, raw / (dims.x * dims.y))
-		sum += origin + Vector3((v.x + 0.5) * cell.x, (v.y + 0.5) * cell.y, (v.z + 0.5) * cell.z)
-	return sum / float(max(1, island.size()))
-
 # Greedy box decomposition of one island's solid voxels.
 # Returns Array of {mn: Vector3i, mx: Vector3i} — non-overlapping boxes that
 # together cover exactly the island's label'd voxels. No AABB over-estimation.

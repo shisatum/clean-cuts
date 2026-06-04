@@ -56,34 +56,31 @@ func _check_connectivity() -> void:
 			labels[idx] = i
 
 	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+	var n_islands: int     = islands.size()
 	var body_mat: Material = body_material
-	var centroids: Array[Vector3] = []  # kept for hole orphan check only
-	for i: int in range(islands.size()):
-		centroids.append(VoxelConnectivity.island_centroid(islands[i], dims, body_size))
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims, centroids)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims, n_islands)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
-		centroids: Array[Vector3]) -> void:
+		n_islands: int) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
-	frag.setup(sz, material_data, body_mat, false)  # skip single AABB box
+	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
-	# Build shape from tight voxel boxes — no AABB overflow, no clip planes needed
 	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
 		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
 		frag.add_body_box(a.center - lc, a.size)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
-		var in_this: bool = _hole_in_island(cyl.position, island_idx, labels, dims)
+		var in_this: bool  = _hole_in_island(cyl.position, island_idx, labels, dims)
 		var in_other: bool = false
-		for j: int in range(centroids.size()):
+		for j: int in range(n_islands):
 			if j != island_idx and _hole_in_island(cyl.position, j, labels, dims):
 				in_other = true
 				break
@@ -111,13 +108,6 @@ func _hole_in_island(body_local_pos: Vector3, island_label: int,
 				if labels[nx + ny * dims.x + nz * dims.x * dims.y] == island_label:
 					return true
 	return false
-
-func _thinnest_axis(sz: Vector3) -> int:
-	if sz.x <= sz.y and sz.x <= sz.z:
-		return 0
-	elif sz.y <= sz.z:
-		return 1
-	return 2
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()

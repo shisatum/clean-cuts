@@ -25,12 +25,12 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 - M2 ✅ Smooth energy gradient: sub-yield = shallow dent, above-yield = through-hole with radius scaling via sqrt curve up to ultimate. Scroll wheel adjusts shot energy live.
 - M3 ✅ `MaterialData.compute_hole(energy)` owns the gradient. `cavity_shape` (0=needle, 1=crater) controls hole profile. Wood: wide holes. Steel: narrow tunnels. Two planks in scene.
 
-**Next up — M4 (built, awaiting test):**
-- Voxel flood-fill connectivity: ~900 voxels/object, BFS, 6-face strict connectivity.
-- Disconnected islands → `FragmentObject` (RigidBody3D, convex hull collision, own hole list).
-- Fragments recursive: re-shoot a fragment, it can split again.
-- Dust (< 8% original volume) deleted silently.
-- `VoxelConnectivity` utility class, `FragmentObject` class, `sever_threshold` on MaterialData.
-- Key files: `scripts/voxel_connectivity.gd`, `scripts/fragment_object.gd`.
+**Current state — M0 through M4 complete:**
+- M4 ✅ Voxel flood-fill severs. Fragments use greedy voxel decomposition for correct shape. Recursive. See REALISTIC_PLAN.md for pre-M5 fix list (4 items, including unused `sever_threshold`).
+
+**Next up — Pre-M5 fixes, then M5:**
+- Fix/remove `sever_threshold` on MaterialData (currently unused).
+- Decide on unifying DestructibleObject + FragmentObject (see plan doc).
+- M5: Physical projectiles — reintroduce deliberately, in isolation.
 
 Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M3. Ask before adding anything not listed above.
