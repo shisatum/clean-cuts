@@ -68,16 +68,20 @@ func _set_coverage_baseline() -> void:
 # Adds a large CSG subtraction box to clip this fragment to "its side" of a cut plane.
 # my_cent and other_cent are in the fragment's local coordinate space.
 func add_clip_box(my_cent: Vector3, other_cent: Vector3) -> void:
-	var cut_dir: Vector3 = (my_cent - other_cent).normalized()
-	if cut_dir.length_squared() < 0.001:
+	# Subtracts the "other island's territory" from this fragment's CSG box.
+	# The clip box near face sits exactly at the cut midpoint; the box extends
+	# toward the other island, removing any AABB overlap from the rendering.
+	var toward_other: Vector3 = (other_cent - my_cent).normalized()
+	if toward_other.length_squared() < 0.001:
 		return
 	var cut_mid: Vector3 = (my_cent + other_cent) * 0.5
+	var ext: float       = body_size.length() * 2.0  # generous depth + perp coverage
 	var clip := CSGBox3D.new()
-	clip.size        = body_size * 4.0
-	clip.operation   = CSGShape3D.OPERATION_SUBTRACTION
-	# Place the box on the "other island's side" of the midpoint
-	var clip_center: Vector3 = cut_mid - cut_dir * body_size.length() * 2.0
-	var y: Vector3   = -cut_dir
+	clip.size      = Vector3(ext * 2.0, ext, ext * 2.0)  # wide perp, right depth along Y
+	clip.operation = CSGShape3D.OPERATION_SUBTRACTION
+	# Center so near face (at -Y) lands on cut_mid; box extends toward other island (+Y)
+	var clip_center: Vector3 = cut_mid + toward_other * (ext * 0.5)
+	var y: Vector3   = toward_other  # +Y points toward other island (clip face = cut plane)
 	var ref: Vector3 = Vector3.UP if absf(y.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
 	var x: Vector3   = ref.cross(y).normalized()
 	var z: Vector3   = x.cross(y).normalized()
