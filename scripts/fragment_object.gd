@@ -13,6 +13,7 @@ const MIN_FRAG_FRACTION := 0.08
 var _csg: CSGCombiner3D
 var _col_shape: CollisionShape3D
 var _ray_col: CollisionShape3D   # concave raycast shape on Area3D (layer 2)
+var _body_material: Material     # stored explicitly so sub-fragments always inherit it
 var _last_hit_dir: Vector3
 var _severing := false
 # Coverage at creation time — threshold only fires if new damage pushes meaningfully higher.
@@ -20,8 +21,9 @@ var _coverage_baseline: float = 0.0
 
 # Called by the spawning script immediately after add_child().
 func setup(size: Vector3, mat: MaterialData, body_mat: Material) -> void:
-	body_size     = size
-	material_data = mat
+	body_size      = size
+	material_data  = mat
+	_body_material = body_mat
 
 	_csg = CSGCombiner3D.new()
 	_csg.use_collision = false
@@ -118,12 +120,8 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	var min_vox: int   = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
-	var body_mat: Material = null
-	for c: Node in _csg.get_children():
-		if c is CSGBox3D:
-			body_mat = (c as CSGBox3D).material
-			break
+	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+	var body_mat: Material = _body_material
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue

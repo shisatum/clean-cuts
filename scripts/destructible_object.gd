@@ -1,9 +1,7 @@
 extends CSGCombiner3D
 
 @export var material_data: MaterialData
-
-# body_size is read from the Body CSGBox3D child at startup.
-# The export lets you see/override it in the inspector if needed.
+@export var body_material: Material       # set in scene; propagated to all fragments
 @export var body_size: Vector3 = Vector3(0.15, 0.8, 2.5)
 
 const TARGET_VOXELS     := 900
@@ -16,6 +14,8 @@ func _ready() -> void:
 	var body_nd := get_node_or_null("Body")
 	if body_nd is CSGBox3D:
 		body_size = (body_nd as CSGBox3D).size
+		if body_material == null:
+			body_material = (body_nd as CSGBox3D).material
 
 func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> void:
 	var hole: Vector2 = material_data.compute_hole(energy) if material_data \
@@ -61,11 +61,8 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	var min_vox: int   = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
-	var body_mat: Material = null
-	var body_nd := get_node_or_null("Body")
-	if body_nd is CSGBox3D:
-		body_mat = (body_nd as CSGBox3D).material
+	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+	var body_mat: Material = body_material
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
