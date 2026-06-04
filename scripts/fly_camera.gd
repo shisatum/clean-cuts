@@ -87,6 +87,8 @@ func _fire() -> void:
 	var from := global_position
 	var to := from + (-global_transform.basis.z * 1000.0)
 	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask    = 2     # layer 2: accurate concave shapes only
+	query.collide_with_areas = true  # needed to hit the fragment Area3Ds
 	var hit := space.intersect_ray(query)
 
 	if hit.is_empty():
@@ -99,15 +101,19 @@ func _fire() -> void:
 		hit.normal.snapped(Vector3.ONE * 0.001),
 	])
 
-	# Push dynamic fragments — applied at the hit point so we get torque too.
-	if hit.collider is RigidBody3D:
+	# Area3D = fragment accurate shape; its parent is the FragmentObject (RigidBody3D).
+	# StaticBody3D = original plank or floor; its parent is DestructibleObject or scene root.
+	var rb: RigidBody3D = null
+	if hit.collider is Area3D and hit.collider.get_parent() is RigidBody3D:
+		rb = hit.collider.get_parent() as RigidBody3D
+	if rb:
 		var mag: float = clamp(shot_energy * 0.002, 0.5, 6.0)
-		var impulse: Vector3 = -global_transform.basis.z * mag
-		(hit.collider as RigidBody3D).apply_impulse(
-			impulse, hit.collider.to_local(hit.position))
+		rb.apply_impulse(-global_transform.basis.z * mag, rb.to_local(hit.position))
 
 	var target: Node = hit.collider
-	if not target.has_method("apply_hole"):
+	if target is Area3D:
+		target = target.get_parent()
+	elif not target.has_method("apply_hole"):
 		target = target.get_parent()
 	if target.has_method("apply_hole"):
 		target.apply_hole(hit.position, -global_transform.basis.z, shot_energy)

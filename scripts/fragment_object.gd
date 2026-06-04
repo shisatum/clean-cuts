@@ -12,6 +12,7 @@ const MIN_FRAG_FRACTION := 0.08
 
 var _csg: CSGCombiner3D
 var _col_shape: CollisionShape3D
+var _ray_col: CollisionShape3D   # concave raycast shape on Area3D (layer 2)
 var _last_hit_dir: Vector3
 var _severing := false
 
@@ -29,13 +30,22 @@ func setup(size: Vector3, mat: MaterialData, body_mat: Material) -> void:
 	box.material = body_mat
 	_csg.add_child(box)
 
+	# Physics collision — simple box on layer 1 (gravity, floor, fragment-on-fragment).
 	_col_shape = CollisionShape3D.new()
-	var box_shape     := BoxShape3D.new()
-	box_shape.size     = size
-	_col_shape.shape   = box_shape
+	var box_shape  := BoxShape3D.new()
+	box_shape.size  = size
+	_col_shape.shape = box_shape
 	add_child(_col_shape)
 
-	# Upgrade from box to accurate convex hull once CSG finishes baking.
+	# Raycast collision — accurate concave shape on layer 2 (bullets respect holes).
+	# Camera targets layer 2 only, so it never hits the box and always hits this.
+	var ray_area := Area3D.new()
+	ray_area.collision_layer = 2
+	ray_area.collision_mask  = 0
+	add_child(ray_area)
+	_ray_col = CollisionShape3D.new()
+	ray_area.add_child(_ray_col)
+
 	call_deferred("_rebuild_collision")
 
 # Copies an existing hole into this fragment's CSG tree.
@@ -62,6 +72,7 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	_csg.add_child(cyl)
 	_align_to_direction(cyl, global_hit_pos, direction)
 	call_deferred("_check_connectivity")
+	call_deferred("_rebuild_collision")
 
 func _check_connectivity() -> void:
 	if _severing or not is_inside_tree():
@@ -120,10 +131,12 @@ func _rebuild_collision() -> void:
 	if not is_inside_tree() or not _csg:
 		return
 	var meshes: Array = _csg.get_meshes()
-	if meshes.size() >= 2 and meshes[1] is ArrayMesh:
-		var convex: Shape3D = (meshes[1] as ArrayMesh).create_convex_shape(true, true)
-		if convex and _col_shape:
-			_col_shape.shape = convex
+	if meshes.size() < 2 or not (meshes[1] is ArrayMesh):
+		return
+	var mesh := meshes[1] as ArrayMesh
+	# Accurate concave shape for the Area3D — bullets correctly pass through holes.
+	if _ray_col:
+		_ray_col.shape = mesh.create_trimesh_shape()
 
 func _thinnest_axis(sz: Vector3) -> int:
 	if sz.x <= sz.y and sz.x <= sz.z:
