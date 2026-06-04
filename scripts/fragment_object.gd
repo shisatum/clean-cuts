@@ -75,7 +75,11 @@ func _check_connectivity() -> void:
 	var voxels: PackedByteArray = VoxelConnectivity.build_grid(body_size, dims, holes)
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
-		return
+		var threshold: float = material_data.sever_threshold if material_data else 1.0
+		var thin: Dictionary = VoxelConnectivity.thinnest_cross_section(voxels, dims)
+		if thin.coverage < threshold:
+			return
+		islands = VoxelConnectivity.split_at_plane(dims, thin.axis, thin.pos)
 	_severing = true
 	var min_vox: int = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
 	var body_mat: Material = null
