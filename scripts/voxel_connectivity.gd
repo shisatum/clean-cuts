@@ -134,6 +134,16 @@ static func split_at_plane(dims: Vector3i, axis: int, pos: int) -> Array[PackedI
 	var result: Array[PackedInt32Array] = [a, b]
 	return result
 
+# Returns the centroid of an island's voxels in body local space.
+static func island_centroid(island: PackedInt32Array, dims: Vector3i, body_size: Vector3) -> Vector3:
+	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	var origin := Vector3(-body_size.x * 0.5, -body_size.y * 0.5, -body_size.z * 0.5)
+	var sum := Vector3.ZERO
+	for raw: int in island:
+		var v := Vector3i(raw % dims.x, (raw / dims.x) % dims.y, raw / (dims.x * dims.y))
+		sum += origin + Vector3((v.x + 0.5) * cell.x, (v.y + 0.5) * cell.y, (v.z + 0.5) * cell.z)
+	return sum / float(max(1, island.size()))
+
 static func _neighbors(v: Vector3i, dims: Vector3i) -> Array[Vector3i]:
 	var result: Array[Vector3i] = []
 	var offsets: Array[Vector3i] = [

@@ -56,31 +56,42 @@ func _check_connectivity() -> void:
 			labels[idx] = i
 
 	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
-	# Minimum fragment thickness = 2 voxels. Thinner slabs cause CSG degeneration
-	# (large holes exceed the slab width) and render as white/corrupted geometry.
-	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
-	var min_thickness: float = minf(cell.x, minf(cell.y, cell.z)) * 1.8
 	var body_mat: Material = body_material
+	# Compute island centroids for clip-plane generation
+	var centroids: Array[Vector3] = []
+	for i: int in range(islands.size()):
+		centroids.append(VoxelConnectivity.island_centroid(islands[i], dims, body_size))
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		if minf(aabb.size.x, minf(aabb.size.y, aabb.size.z)) < min_thickness:
-			continue  # too thin — treat as dust
-		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims, centroids)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
-		island_idx: int, labels: PackedInt32Array, dims: Vector3i) -> void:
+		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
+		centroids: Array[Vector3]) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
+	# Transfer holes: assign if in this island, or if not found in any island (large holes)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
-		if _hole_in_island(cyl.position, island_idx, labels, dims):
+		var in_this: bool = _hole_in_island(cyl.position, island_idx, labels, dims)
+		var in_other: bool = false
+		for j: int in range(centroids.size()):
+			if j != island_idx and _hole_in_island(cyl.position, j, labels, dims):
+				in_other = true
+				break
+		if in_this or (not in_other):  # belongs here, or orphaned (goes everywhere)
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
+	# Clip box: removes other island's territory to prevent overlap duplication
+	if centroids.size() == 2:
+		var my_cent: Vector3    = centroids[island_idx] - lc
+		var other_cent: Vector3 = centroids[1 - island_idx] - lc
+		frag.add_clip_box(my_cent, other_cent)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5

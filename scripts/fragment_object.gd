@@ -65,6 +65,25 @@ func _set_coverage_baseline() -> void:
 	_coverage_baseline = VoxelConnectivity.weakest_section(
 		voxels, dims, _thinnest_axis(body_size)).coverage
 
+# Adds a large CSG subtraction box to clip this fragment to "its side" of a cut plane.
+# my_cent and other_cent are in the fragment's local coordinate space.
+func add_clip_box(my_cent: Vector3, other_cent: Vector3) -> void:
+	var cut_dir: Vector3 = (my_cent - other_cent).normalized()
+	if cut_dir.length_squared() < 0.001:
+		return
+	var cut_mid: Vector3 = (my_cent + other_cent) * 0.5
+	var clip := CSGBox3D.new()
+	clip.size        = body_size * 4.0
+	clip.operation   = CSGShape3D.OPERATION_SUBTRACTION
+	# Place the box on the "other island's side" of the midpoint
+	var clip_center: Vector3 = cut_mid - cut_dir * body_size.length() * 2.0
+	var y: Vector3   = -cut_dir
+	var ref: Vector3 = Vector3.UP if absf(y.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
+	var x: Vector3   = ref.cross(y).normalized()
+	var z: Vector3   = x.cross(y).normalized()
+	clip.transform = Transform3D(Basis(x, y, z), clip_center)
+	_csg.add_child(clip)
+
 # Copies an existing hole into this fragment's CSG tree.
 func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> void:
 	var cyl := CSGCylinder3D.new()
@@ -115,30 +134,39 @@ func _check_connectivity() -> void:
 			labels[idx] = i
 
 	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
-	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
-	var min_thickness: float = minf(cell.x, minf(cell.y, cell.z)) * 1.8
 	var body_mat: Material = _body_material
+	var centroids: Array[Vector3] = []
+	for i: int in range(islands.size()):
+		centroids.append(VoxelConnectivity.island_centroid(islands[i], dims, body_size))
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		if minf(aabb.size.x, minf(aabb.size.y, aabb.size.z)) < min_thickness:
-			continue  # too thin — treat as dust
-		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims, centroids)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
-		island_idx: int, labels: PackedInt32Array, dims: Vector3i) -> void:
+		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
+		centroids: Array[Vector3]) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
-		# cyl.position is local to _csg which is the body coordinate frame.
-		if _hole_in_island(cyl.position, island_idx, labels, dims):
+		var in_this: bool = _hole_in_island(cyl.position, island_idx, labels, dims)
+		var in_other: bool = false
+		for j: int in range(centroids.size()):
+			if j != island_idx and _hole_in_island(cyl.position, j, labels, dims):
+				in_other = true
+				break
+		if in_this or (not in_other):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
+	if centroids.size() == 2:
+		var my_cent: Vector3    = centroids[island_idx] - lc
+		var other_cent: Vector3 = centroids[1 - island_idx] - lc
+		frag.add_clip_box(my_cent, other_cent)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
