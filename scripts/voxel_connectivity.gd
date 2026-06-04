@@ -147,6 +147,53 @@ static func island_centroid(island: PackedInt32Array, dims: Vector3i, body_size:
 # Greedy box decomposition of one island's solid voxels.
 # Returns Array of {mn: Vector3i, mx: Vector3i} — non-overlapping boxes that
 # together cover exactly the island's label'd voxels. No AABB over-estimation.
+# Like build_grid but initializes solid state only from explicit body boxes
+# instead of the full AABB. Required for fragments whose shape is a subset of
+# their AABB (diagonal cuts, irregular islands).
+static func build_grid_with_shapes(body_size: Vector3, dims: Vector3i,
+		body_boxes: Array, holes: Array) -> PackedByteArray:
+	var voxels := PackedByteArray()
+	voxels.resize(dims.x * dims.y * dims.z)
+	voxels.fill(0)
+	var cell   := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	var origin := Vector3(-body_size.x * 0.5, -body_size.y * 0.5, -body_size.z * 0.5)
+	# Mark voxels covered by body boxes as solid
+	for node: Node in body_boxes:
+		if not (node is CSGBox3D):
+			continue
+		var box := node as CSGBox3D
+		var bmin: Vector3 = box.position - box.size * 0.5
+		var bmax: Vector3 = box.position + box.size * 0.5
+		var xi0: int = maxi(0,          int((bmin.x - origin.x) / cell.x))
+		var yi0: int = maxi(0,          int((bmin.y - origin.y) / cell.y))
+		var zi0: int = maxi(0,          int((bmin.z - origin.z) / cell.z))
+		var xi1: int = mini(dims.x - 1, int((bmax.x - origin.x) / cell.x))
+		var yi1: int = mini(dims.y - 1, int((bmax.y - origin.y) / cell.y))
+		var zi1: int = mini(dims.z - 1, int((bmax.z - origin.z) / cell.z))
+		for zi: int in range(zi0, zi1 + 1):
+			for yi: int in range(yi0, yi1 + 1):
+				for xi: int in range(xi0, xi1 + 1):
+					voxels[xi + yi * dims.x + zi * dims.x * dims.y] = 1
+	# Carve holes (identical to build_grid)
+	for hole: Node in holes:
+		if not (hole is CSGCylinder3D):
+			continue
+		var cyl := hole as CSGCylinder3D
+		var inv: Transform3D = cyl.transform.inverse()
+		var r: float = cyl.radius
+		var hh: float = cyl.height * 0.5
+		for zi: int in range(dims.z):
+			for yi: int in range(dims.y):
+				for xi: int in range(dims.x):
+					var i: int = xi + yi * dims.x + zi * dims.x * dims.y
+					if voxels[i] == 0:
+						continue
+					var lp := origin + Vector3((xi + 0.5) * cell.x, (yi + 0.5) * cell.y, (zi + 0.5) * cell.z)
+					var p: Vector3 = inv * lp
+					if Vector2(p.x, p.z).length() <= r and absf(p.y) <= hh:
+						voxels[i] = 0
+	return voxels
+
 static func decompose_island(labels: PackedInt32Array, island_label: int,
 		dims: Vector3i) -> Array[Dictionary]:
 	var covered := PackedByteArray()

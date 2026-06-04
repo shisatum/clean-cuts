@@ -101,6 +101,9 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	call_deferred("_check_connectivity")
 	call_deferred("_rebuild_collision")
 
+func _get_body_boxes() -> Array:
+	return _csg.get_children().filter(func(c: Node) -> bool: return c is CSGBox3D)
+
 func _check_connectivity() -> void:
 	if _severing or not is_inside_tree():
 		return
@@ -109,8 +112,13 @@ func _check_connectivity() -> void:
 			return c is CSGCylinder3D \
 				and (c as CSGCylinder3D).operation == CSGShape3D.OPERATION_SUBTRACTION
 	)
-	var dims: Vector3i           = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
-	var voxels: PackedByteArray  = VoxelConnectivity.build_grid(body_size, dims, holes)
+	var dims: Vector3i = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
+	# Use exact body-box initialisation — AABB-only start creates ghost-solid corners
+	# for fragments with diagonal cuts, causing false islands when re-shot.
+	var body_boxes := _get_body_boxes()
+	var voxels: PackedByteArray = VoxelConnectivity.build_grid_with_shapes(
+		body_size, dims, body_boxes, holes) if body_boxes.size() > 1 \
+		else VoxelConnectivity.build_grid(body_size, dims, holes)
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
 		return
