@@ -167,10 +167,10 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 				break
 		if in_this or (not in_other):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
-	if centroids.size() == 2:
-		var my_cent: Vector3    = centroids[island_idx] - lc
-		var other_cent: Vector3 = centroids[1 - island_idx] - lc
-		frag.add_clip_box(my_cent, other_cent)
+	var my_cent_frag: Vector3 = centroids[island_idx] - lc
+	for j: int in range(centroids.size()):
+		if j != island_idx:
+			frag.add_clip_box(my_cent_frag, centroids[j] - lc)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
