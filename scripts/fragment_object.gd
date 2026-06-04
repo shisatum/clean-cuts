@@ -20,7 +20,8 @@ var _severing := false
 var _coverage_baseline: float = 0.0
 
 # Called by the spawning script immediately after add_child().
-func setup(size: Vector3, mat: MaterialData, body_mat: Material) -> void:
+func setup(size: Vector3, mat: MaterialData, body_mat: Material,
+		create_body_box: bool = true) -> void:
 	body_size      = size
 	material_data  = mat
 	_body_material = body_mat
@@ -29,10 +30,11 @@ func setup(size: Vector3, mat: MaterialData, body_mat: Material) -> void:
 	_csg.use_collision = false
 	add_child(_csg)
 
-	var box := CSGBox3D.new()
-	box.size     = size
-	box.material = body_mat
-	_csg.add_child(box)
+	if create_body_box:
+		var box := CSGBox3D.new()
+		box.size     = size
+		box.material = body_mat
+		_csg.add_child(box)
 
 	# Physics collision — simple box on layer 1 (gravity, floor, fragment-on-fragment).
 	_col_shape = CollisionShape3D.new()
@@ -65,28 +67,13 @@ func _set_coverage_baseline() -> void:
 	_coverage_baseline = VoxelConnectivity.weakest_section(
 		voxels, dims, _thinnest_axis(body_size)).coverage
 
-# Adds a large CSG subtraction box to clip this fragment to "its side" of a cut plane.
-# my_cent and other_cent are in the fragment's local coordinate space.
-func add_clip_box(my_cent: Vector3, other_cent: Vector3) -> void:
-	# Subtracts the "other island's territory" from this fragment's CSG box.
-	# The clip box near face sits exactly at the cut midpoint; the box extends
-	# toward the other island, removing any AABB overlap from the rendering.
-	var toward_other: Vector3 = (other_cent - my_cent).normalized()
-	if toward_other.length_squared() < 0.001:
-		return
-	var cut_mid: Vector3 = (my_cent + other_cent) * 0.5
-	var ext: float       = body_size.length() * 2.0  # generous depth + perp coverage
-	var clip := CSGBox3D.new()
-	clip.size      = Vector3(ext * 2.0, ext, ext * 2.0)  # wide perp, right depth along Y
-	clip.operation = CSGShape3D.OPERATION_SUBTRACTION
-	# Center so near face (at -Y) lands on cut_mid; box extends toward other island (+Y)
-	var clip_center: Vector3 = cut_mid + toward_other * (ext * 0.5)
-	var y: Vector3   = toward_other  # +Y points toward other island (clip face = cut plane)
-	var ref: Vector3 = Vector3.UP if absf(y.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
-	var x: Vector3   = ref.cross(y).normalized()
-	var z: Vector3   = x.cross(y).normalized()
-	clip.transform = Transform3D(Basis(x, y, z), clip_center)
-	_csg.add_child(clip)
+# Adds one solid box to build up the fragment's base shape voxel-by-voxel.
+func add_body_box(local_pos: Vector3, sz: Vector3) -> void:
+	var b := CSGBox3D.new()
+	b.size     = sz
+	b.material = _body_material
+	b.position = local_pos
+	_csg.add_child(b)
 
 # Copies an existing hole into this fragment's CSG tree.
 func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> void:
@@ -155,8 +142,12 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		centroids: Array[Vector3]) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
-	frag.setup(sz, material_data, body_mat)
+	frag.setup(sz, material_data, body_mat, false)  # skip single AABB box
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
+	# Build shape from tight voxel boxes — no AABB overflow, no clip planes needed
+	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
+		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
+		frag.add_body_box(a.center - lc, a.size)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
 		var in_this: bool = _hole_in_island(cyl.position, island_idx, labels, dims)
@@ -167,10 +158,6 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 				break
 		if in_this or (not in_other):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
-	var my_cent_frag: Vector3 = centroids[island_idx] - lc
-	for j: int in range(centroids.size()):
-		if j != island_idx:
-			frag.add_clip_box(my_cent_frag, centroids[j] - lc)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5

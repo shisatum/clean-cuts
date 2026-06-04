@@ -144,6 +144,57 @@ static func island_centroid(island: PackedInt32Array, dims: Vector3i, body_size:
 		sum += origin + Vector3((v.x + 0.5) * cell.x, (v.y + 0.5) * cell.y, (v.z + 0.5) * cell.z)
 	return sum / float(max(1, island.size()))
 
+# Greedy box decomposition of one island's solid voxels.
+# Returns Array of {mn: Vector3i, mx: Vector3i} — non-overlapping boxes that
+# together cover exactly the island's label'd voxels. No AABB over-estimation.
+static func decompose_island(labels: PackedInt32Array, island_label: int,
+		dims: Vector3i) -> Array[Dictionary]:
+	var covered := PackedByteArray()
+	covered.resize(labels.size())
+	covered.fill(0)
+	var boxes: Array[Dictionary] = []
+	for zi: int in range(dims.z):
+		for yi: int in range(dims.y):
+			for xi: int in range(dims.x):
+				var idx: int = xi + yi * dims.x + zi * dims.x * dims.y
+				if labels[idx] != island_label or covered[idx] == 1:
+					continue
+				# Expand in X
+				var ex := xi
+				while ex + 1 < dims.x \
+						and labels[(ex+1) + yi*dims.x + zi*dims.x*dims.y] == island_label \
+						and covered[(ex+1) + yi*dims.x + zi*dims.x*dims.y] == 0:
+					ex += 1
+				# Expand in Y (full x range must hold)
+				var ey := yi
+				while ey + 1 < dims.y:
+					var ok := true
+					for tx: int in range(xi, ex + 1):
+						var ti: int = tx + (ey+1)*dims.x + zi*dims.x*dims.y
+						if labels[ti] != island_label or covered[ti] == 1:
+							ok = false; break
+					if ok: ey += 1
+					else: break
+				# Expand in Z (full x,y range must hold)
+				var ez := zi
+				while ez + 1 < dims.z:
+					var ok := true
+					for ty: int in range(yi, ey + 1):
+						for tx: int in range(xi, ex + 1):
+							var ti: int = tx + ty*dims.x + (ez+1)*dims.x*dims.y
+							if labels[ti] != island_label or covered[ti] == 1:
+								ok = false; break
+						if not ok: break
+					if ok: ez += 1
+					else: break
+				# Mark covered
+				for tz: int in range(zi, ez + 1):
+					for ty: int in range(yi, ey + 1):
+						for tx: int in range(xi, ex + 1):
+							covered[tx + ty*dims.x + tz*dims.x*dims.y] = 1
+				boxes.append({mn = Vector3i(xi, yi, zi), mx = Vector3i(ex, ey, ez)})
+	return boxes
+
 static func _neighbors(v: Vector3i, dims: Vector3i) -> Array[Vector3i]:
 	var result: Array[Vector3i] = []
 	var offsets: Array[Vector3i] = [

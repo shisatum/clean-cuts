@@ -57,8 +57,7 @@ func _check_connectivity() -> void:
 
 	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
 	var body_mat: Material = body_material
-	# Compute island centroids for clip-plane generation
-	var centroids: Array[Vector3] = []
+	var centroids: Array[Vector3] = []  # kept for hole orphan check only
 	for i: int in range(islands.size()):
 		centroids.append(VoxelConnectivity.island_centroid(islands[i], dims, body_size))
 	for i: int in range(islands.size()):
@@ -74,9 +73,12 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		centroids: Array[Vector3]) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
-	frag.setup(sz, material_data, body_mat)
+	frag.setup(sz, material_data, body_mat, false)  # skip single AABB box
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
-	# Transfer holes: assign if in this island, or if not found in any island (large holes)
+	# Build shape from tight voxel boxes — no AABB overflow, no clip planes needed
+	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
+		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
+		frag.add_body_box(a.center - lc, a.size)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
 		var in_this: bool = _hole_in_island(cyl.position, island_idx, labels, dims)
@@ -85,13 +87,8 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 			if j != island_idx and _hole_in_island(cyl.position, j, labels, dims):
 				in_other = true
 				break
-		if in_this or (not in_other):  # belongs here, or orphaned (goes everywhere)
+		if in_this or (not in_other):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
-	# Clip each other island's territory out of this fragment to prevent overlap.
-	var my_cent_frag: Vector3 = centroids[island_idx] - lc
-	for j: int in range(centroids.size()):
-		if j != island_idx:
-			frag.add_clip_box(my_cent_frag, centroids[j] - lc)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
