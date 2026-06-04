@@ -44,9 +44,7 @@ func _check_connectivity() -> void:
 	var voxels: PackedByteArray  = VoxelConnectivity.build_grid(body_size, dims, holes)
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
-		# Flood fill sees a technical connection — check sever_threshold on the
-		# thinnest body axis only. Checking other axes causes false splits when
-		# shots penetrate a face and void slices on the perpendicular axes.
+		# Flood fill sees a technical connection — check sever_threshold on thinnest axis only.
 		var threshold: float = material_data.sever_threshold if material_data else 1.0
 		var thin_axis: int = _thinnest_axis(body_size)
 		var section: Dictionary = VoxelConnectivity.weakest_section(voxels, dims, thin_axis)
@@ -54,38 +52,60 @@ func _check_connectivity() -> void:
 			return
 		islands = VoxelConnectivity.split_at_plane(dims, thin_axis, section.pos)
 	_severing = true
+
+	# Build label array so each hole is assigned to exactly the island that owns it.
+	var labels := PackedInt32Array()
+	labels.resize(voxels.size())
+	labels.fill(-1)
+	for i: int in range(islands.size()):
+		for idx: int in islands[i]:
+			labels[idx] = i
+
 	var min_vox: int   = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
 	var body_mat: Material = null
 	var body_nd := get_node_or_null("Body")
 	if body_nd is CSGBox3D:
 		body_mat = (body_nd as CSGBox3D).material
-	for island: PackedInt32Array in islands:
-		if island.size() < min_vox:
+	for i: int in range(islands.size()):
+		if islands[i].size() < min_vox:
 			continue
-		var b: Dictionary    = VoxelConnectivity.island_bounds(island, dims)
+		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_mat)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims)
 	queue_free()
 
-func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material) -> void:
+func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
+		island_idx: int, labels: PackedInt32Array, dims: Vector3i) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
-		if _hole_overlaps(to_local(cyl.global_position), cyl, lc, sz):
+		if _hole_in_island(cyl.position, island_idx, labels, dims):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
 
-func _hole_overlaps(cyl_local: Vector3, cyl: CSGCylinder3D, fc: Vector3, fs: Vector3) -> bool:
-	var m: float   = cyl.radius
-	var h: Vector3 = fs * 0.5
-	return absf(cyl_local.x - fc.x) <= h.x + m \
-		and absf(cyl_local.y - fc.y) <= h.y + m \
-		and absf(cyl_local.z - fc.z) <= h.z + m
+# Returns true if the voxel at body_local_pos (or any neighbour) belongs to island_label.
+func _hole_in_island(body_local_pos: Vector3, island_label: int,
+		labels: PackedInt32Array, dims: Vector3i) -> bool:
+	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	var xi: int = clamp(int((body_local_pos.x + body_size.x * 0.5) / cell.x), 0, dims.x - 1)
+	var yi: int = clamp(int((body_local_pos.y + body_size.y * 0.5) / cell.y), 0, dims.y - 1)
+	var zi: int = clamp(int((body_local_pos.z + body_size.z * 0.5) / cell.z), 0, dims.z - 1)
+	for dz: int in range(-1, 2):
+		for dy: int in range(-1, 2):
+			for dx: int in range(-1, 2):
+				var nx: int = xi + dx
+				var ny: int = yi + dy
+				var nz: int = zi + dz
+				if nx < 0 or nx >= dims.x or ny < 0 or ny >= dims.y or nz < 0 or nz >= dims.z:
+					continue
+				if labels[nx + ny * dims.x + nz * dims.x * dims.y] == island_label:
+					return true
+	return false
 
 func _thinnest_axis(sz: Vector3) -> int:
 	if sz.x <= sz.y and sz.x <= sz.z:

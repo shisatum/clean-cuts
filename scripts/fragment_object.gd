@@ -15,10 +15,12 @@ var _col_shape: CollisionShape3D
 var _ray_col: CollisionShape3D   # concave raycast shape on Area3D (layer 2)
 var _last_hit_dir: Vector3
 var _severing := false
+# Coverage at creation time — threshold only fires if new damage pushes meaningfully higher.
+var _coverage_baseline: float = 0.0
 
 # Called by the spawning script immediately after add_child().
 func setup(size: Vector3, mat: MaterialData, body_mat: Material) -> void:
-	body_size    = size
+	body_size     = size
 	material_data = mat
 
 	_csg = CSGCombiner3D.new()
@@ -38,7 +40,6 @@ func setup(size: Vector3, mat: MaterialData, body_mat: Material) -> void:
 	add_child(_col_shape)
 
 	# Raycast collision — accurate concave shape on layer 2 (bullets respect holes).
-	# Camera targets layer 2 only, so it never hits the box and always hits this.
 	var ray_area := Area3D.new()
 	ray_area.collision_layer = 2
 	ray_area.collision_mask  = 0
@@ -47,6 +48,20 @@ func setup(size: Vector3, mat: MaterialData, body_mat: Material) -> void:
 	ray_area.add_child(_ray_col)
 
 	call_deferred("_rebuild_collision")
+	call_deferred("_set_coverage_baseline")
+
+func _set_coverage_baseline() -> void:
+	if not is_inside_tree():
+		return
+	var holes: Array = _csg.get_children().filter(
+		func(c: Node) -> bool:
+			return c is CSGCylinder3D \
+				and (c as CSGCylinder3D).operation == CSGShape3D.OPERATION_SUBTRACTION
+	)
+	var dims: Vector3i          = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
+	var voxels: PackedByteArray = VoxelConnectivity.build_grid(body_size, dims, holes)
+	_coverage_baseline = VoxelConnectivity.weakest_section(
+		voxels, dims, _thinnest_axis(body_size)).coverage
 
 # Copies an existing hole into this fragment's CSG tree.
 func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> void:
@@ -82,50 +97,75 @@ func _check_connectivity() -> void:
 			return c is CSGCylinder3D \
 				and (c as CSGCylinder3D).operation == CSGShape3D.OPERATION_SUBTRACTION
 	)
-	var dims: Vector3i      = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
-	var voxels: PackedByteArray = VoxelConnectivity.build_grid(body_size, dims, holes)
+	var dims: Vector3i           = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
+	var voxels: PackedByteArray  = VoxelConnectivity.build_grid(body_size, dims, holes)
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
 		var threshold: float = material_data.sever_threshold if material_data else 1.0
-		var thin_axis: int = _thinnest_axis(body_size)
+		var thin_axis: int   = _thinnest_axis(body_size)
 		var section: Dictionary = VoxelConnectivity.weakest_section(voxels, dims, thin_axis)
-		if section.coverage < threshold:
+		# Require meaningful damage beyond inherited baseline to prevent immediate re-sever.
+		if section.coverage < maxf(threshold, _coverage_baseline + 0.05):
 			return
 		islands = VoxelConnectivity.split_at_plane(dims, thin_axis, section.pos)
 	_severing = true
-	var min_vox: int = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+
+	# Build label array so each hole is assigned to exactly the island that owns it.
+	var labels := PackedInt32Array()
+	labels.resize(voxels.size())
+	labels.fill(-1)
+	for i: int in range(islands.size()):
+		for idx: int in islands[i]:
+			labels[idx] = i
+
+	var min_vox: int   = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
 	var body_mat: Material = null
 	for c: Node in _csg.get_children():
 		if c is CSGBox3D:
 			body_mat = (c as CSGBox3D).material
 			break
-	for island: PackedInt32Array in islands:
-		if island.size() < min_vox:
+	for i: int in range(islands.size()):
+		if islands[i].size() < min_vox:
 			continue
-		var b: Dictionary    = VoxelConnectivity.island_bounds(island, dims)
+		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_mat)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims)
 	queue_free()
 
-func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material) -> void:
+func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
+		island_idx: int, labels: PackedInt32Array, dims: Vector3i) -> void:
 	var frag := FragmentObject.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
-		if _hole_overlaps(_csg.to_local(cyl.global_position), cyl, lc, sz):
+		# cyl.position is local to _csg which is the body coordinate frame.
+		if _hole_in_island(cyl.position, island_idx, labels, dims):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
 
-func _hole_overlaps(cyl_local: Vector3, cyl: CSGCylinder3D, fc: Vector3, fs: Vector3) -> bool:
-	var m: float  = cyl.radius
-	var h: Vector3 = fs * 0.5
-	return absf(cyl_local.x - fc.x) <= h.x + m \
-		and absf(cyl_local.y - fc.y) <= h.y + m \
-		and absf(cyl_local.z - fc.z) <= h.z + m
+# Returns true if body_local_pos (or any 1-voxel neighbour) belongs to island_label.
+# The neighbourhood ensures holes straddling island boundaries appear in both fragments.
+func _hole_in_island(body_local_pos: Vector3, island_label: int,
+		labels: PackedInt32Array, dims: Vector3i) -> bool:
+	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	var xi: int = clamp(int((body_local_pos.x + body_size.x * 0.5) / cell.x), 0, dims.x - 1)
+	var yi: int = clamp(int((body_local_pos.y + body_size.y * 0.5) / cell.y), 0, dims.y - 1)
+	var zi: int = clamp(int((body_local_pos.z + body_size.z * 0.5) / cell.z), 0, dims.z - 1)
+	for dz: int in range(-1, 2):
+		for dy: int in range(-1, 2):
+			for dx: int in range(-1, 2):
+				var nx: int = xi + dx
+				var ny: int = yi + dy
+				var nz: int = zi + dz
+				if nx < 0 or nx >= dims.x or ny < 0 or ny >= dims.y or nz < 0 or nz >= dims.z:
+					continue
+				if labels[nx + ny * dims.x + nz * dims.x * dims.y] == island_label:
+					return true
+	return false
 
 func _rebuild_collision() -> void:
 	if not is_inside_tree() or not _csg:
@@ -133,10 +173,8 @@ func _rebuild_collision() -> void:
 	var meshes: Array = _csg.get_meshes()
 	if meshes.size() < 2 or not (meshes[1] is ArrayMesh):
 		return
-	var mesh := meshes[1] as ArrayMesh
-	# Accurate concave shape for the Area3D — bullets correctly pass through holes.
 	if _ray_col:
-		_ray_col.shape = mesh.create_trimesh_shape()
+		_ray_col.shape = (meshes[1] as ArrayMesh).create_trimesh_shape()
 
 func _thinnest_axis(sz: Vector3) -> int:
 	if sz.x <= sz.y and sz.x <= sz.z:
@@ -146,8 +184,8 @@ func _thinnest_axis(sz: Vector3) -> int:
 	return 2
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
-	var y: Vector3  = direction.normalized()
+	var y: Vector3   = direction.normalized()
 	var ref: Vector3 = Vector3.UP if absf(y.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
-	var x: Vector3  = ref.cross(y).normalized()
-	var z: Vector3  = x.cross(y).normalized()
+	var x: Vector3   = ref.cross(y).normalized()
+	var z: Vector3   = x.cross(y).normalized()
 	node.global_transform = Transform3D(Basis(x, y, z), gp)
