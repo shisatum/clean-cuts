@@ -7,3 +7,4 @@ script = ExtResource("1")
 yield_strength = 40.0
 ultimate_strength = 800.0
 cavity_shape = 0.8
+sever_threshold = 0.8
