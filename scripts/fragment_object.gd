@@ -121,7 +121,7 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material)
 	frag.linear_velocity  = _last_hit_dir * 0.5
 
 func _hole_overlaps(cyl_local: Vector3, cyl: CSGCylinder3D, fc: Vector3, fs: Vector3) -> bool:
-	var m: float  = cyl.height * 0.5
+	var m: float  = cyl.radius
 	var h: Vector3 = fs * 0.5
 	return absf(cyl_local.x - fc.x) <= h.x + m \
 		and absf(cyl_local.y - fc.y) <= h.y + m \
