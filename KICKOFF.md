@@ -25,9 +25,12 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 - M2 ✅ Smooth energy gradient: sub-yield = shallow dent, above-yield = through-hole with radius scaling via sqrt curve up to ultimate. Scroll wheel adjusts shot energy live.
 - M3 ✅ `MaterialData.compute_hole(energy)` owns the gradient. `cavity_shape` (0=needle, 1=crater) controls hole profile. Wood: wide holes. Steel: narrow tunnels. Two planks in scene.
 
-**Next up — M4:**
-- Add the Edge/Slash archetype: cut the plank into two independent halves that each keep their existing holes.
-- This is where splitting is re-introduced — and only here.
-- Each half becomes its own `CSGCombiner3D` with its own collision and hole history.
+**Next up — M4 (built, awaiting test):**
+- Voxel flood-fill connectivity: ~900 voxels/object, BFS, 6-face strict connectivity.
+- Disconnected islands → `FragmentObject` (RigidBody3D, convex hull collision, own hole list).
+- Fragments recursive: re-shoot a fragment, it can split again.
+- Dust (< 8% original volume) deleted silently.
+- `VoxelConnectivity` utility class, `FragmentObject` class, `sever_threshold` on MaterialData.
+- Key files: `scripts/voxel_connectivity.gd`, `scripts/fragment_object.gd`.
 
 Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M3. Ask before adding anything not listed above.
