@@ -62,12 +62,18 @@ func _check_connectivity() -> void:
 			labels[idx] = i
 
 	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+	# Minimum fragment thickness = 2 voxels. Thinner slabs cause CSG degeneration
+	# (large holes exceed the slab width) and render as white/corrupted geometry.
+	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	var min_thickness: float = minf(cell.x, minf(cell.y, cell.z)) * 1.8
 	var body_mat: Material = body_material
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
+		if minf(aabb.size.x, minf(aabb.size.y, aabb.size.z)) < min_thickness:
+			continue  # too thin — treat as dust
 		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims)
 	queue_free()
 
