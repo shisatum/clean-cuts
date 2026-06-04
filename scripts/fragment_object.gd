@@ -76,10 +76,11 @@ func _check_connectivity() -> void:
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
 		var threshold: float = material_data.sever_threshold if material_data else 1.0
-		var thin: Dictionary = VoxelConnectivity.thinnest_cross_section(voxels, dims)
-		if thin.coverage < threshold:
+		var thin_axis: int = _thinnest_axis(body_size)
+		var section: Dictionary = VoxelConnectivity.weakest_section(voxels, dims, thin_axis)
+		if section.coverage < threshold:
 			return
-		islands = VoxelConnectivity.split_at_plane(dims, thin.axis, thin.pos)
+		islands = VoxelConnectivity.split_at_plane(dims, thin_axis, section.pos)
 	_severing = true
 	var min_vox: int = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
 	var body_mat: Material = null
@@ -123,6 +124,13 @@ func _rebuild_collision() -> void:
 		var convex: Shape3D = (meshes[1] as ArrayMesh).create_convex_shape(true, true)
 		if convex and _col_shape:
 			_col_shape.shape = convex
+
+func _thinnest_axis(sz: Vector3) -> int:
+	if sz.x <= sz.y and sz.x <= sz.z:
+		return 0
+	elif sz.y <= sz.z:
+		return 1
+	return 2
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3  = direction.normalized()

@@ -44,12 +44,15 @@ func _check_connectivity() -> void:
 	var voxels: PackedByteArray  = VoxelConnectivity.build_grid(body_size, dims, holes)
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
-		# Flood fill sees a technical connection — check if sever_threshold overrides it
+		# Flood fill sees a technical connection — check sever_threshold on the
+		# thinnest body axis only. Checking other axes causes false splits when
+		# shots penetrate a face and void slices on the perpendicular axes.
 		var threshold: float = material_data.sever_threshold if material_data else 1.0
-		var thin: Dictionary = VoxelConnectivity.thinnest_cross_section(voxels, dims)
-		if thin.coverage < threshold:
+		var thin_axis: int = _thinnest_axis(body_size)
+		var section: Dictionary = VoxelConnectivity.weakest_section(voxels, dims, thin_axis)
+		if section.coverage < threshold:
 			return
-		islands = VoxelConnectivity.split_at_plane(dims, thin.axis, thin.pos)
+		islands = VoxelConnectivity.split_at_plane(dims, thin_axis, section.pos)
 	_severing = true
 	var min_vox: int   = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
 	var body_mat: Material = null
@@ -83,6 +86,13 @@ func _hole_overlaps(cyl_local: Vector3, cyl: CSGCylinder3D, fc: Vector3, fs: Vec
 	return absf(cyl_local.x - fc.x) <= h.x + m \
 		and absf(cyl_local.y - fc.y) <= h.y + m \
 		and absf(cyl_local.z - fc.z) <= h.z + m
+
+func _thinnest_axis(sz: Vector3) -> int:
+	if sz.x <= sz.y and sz.x <= sz.z:
+		return 0
+	elif sz.y <= sz.z:
+		return 1
+	return 2
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()

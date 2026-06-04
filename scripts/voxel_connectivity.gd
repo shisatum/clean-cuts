@@ -91,31 +91,31 @@ static func aabb_to_local(mn: Vector3i, mx: Vector3i, dims: Vector3i, body_size:
 	var hi: Vector3 = origin + Vector3((mx.x + 1) * cell.x, (mx.y + 1) * cell.y, (mx.z + 1) * cell.z)
 	return {center = (lo + hi) * 0.5, size = hi - lo}
 
-# Scans all three axes for the cross-section with the highest void fraction.
-# Returns {axis: int, pos: int, coverage: float} where coverage = fraction voided.
-# Used to detect near-severed connections that the flood fill misses.
-static func thinnest_cross_section(voxels: PackedByteArray, dims: Vector3i) -> Dictionary:
-	var best := {axis = 2, pos = 0, coverage = 0.0}
-	for axis: int in range(3):
-		var ax_len: int = dims.x if axis == 0 else (dims.y if axis == 1 else dims.z)
-		var void_counts := PackedInt32Array()
-		void_counts.resize(ax_len)
-		void_counts.fill(0)
-		var totals := PackedInt32Array()
-		totals.resize(ax_len)
-		totals.fill(0)
-		for zi: int in range(dims.z):
-			for yi: int in range(dims.y):
-				for xi: int in range(dims.x):
-					var idx: int = xi + yi * dims.x + zi * dims.x * dims.y
-					var coord: int = xi if axis == 0 else (yi if axis == 1 else zi)
-					totals[coord] += 1
-					if voxels[idx] == 0:
-						void_counts[coord] += 1
-		for pos: int in range(ax_len):
-			var cov: float = float(void_counts[pos]) / float(totals[pos])
-			if cov > best.coverage:
-				best = {axis = axis, pos = pos, coverage = cov}
+# Returns the most-voided cross-section along ONE specific axis.
+# Returns {pos: int, coverage: float} where coverage = fraction voided.
+# Callers should pass the thinnest body dimension axis so that face-penetrating
+# shots (which void slices on the perpendicular axes) don't trigger false splits.
+static func weakest_section(voxels: PackedByteArray, dims: Vector3i, axis: int) -> Dictionary:
+	var ax_len: int = dims.x if axis == 0 else (dims.y if axis == 1 else dims.z)
+	var void_counts := PackedInt32Array()
+	void_counts.resize(ax_len)
+	void_counts.fill(0)
+	var totals := PackedInt32Array()
+	totals.resize(ax_len)
+	totals.fill(0)
+	for zi: int in range(dims.z):
+		for yi: int in range(dims.y):
+			for xi: int in range(dims.x):
+				var idx: int = xi + yi * dims.x + zi * dims.x * dims.y
+				var coord: int = xi if axis == 0 else (yi if axis == 1 else zi)
+				totals[coord] += 1
+				if voxels[idx] == 0:
+					void_counts[coord] += 1
+	var best := {pos = 0, coverage = 0.0}
+	for pos: int in range(ax_len):
+		var cov: float = float(void_counts[pos]) / float(totals[pos])
+		if cov > best.coverage:
+			best = {pos = pos, coverage = cov}
 	return best
 
 # Splits all voxel indices into two groups along axis at pos.
