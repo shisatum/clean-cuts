@@ -44,13 +44,7 @@ func _check_connectivity() -> void:
 	var voxels: PackedByteArray  = VoxelConnectivity.build_grid(body_size, dims, holes)
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
-		# Flood fill sees a technical connection — check sever_threshold on thinnest axis only.
-		var threshold: float = material_data.sever_threshold if material_data else 1.0
-		var thin_axis: int = _thinnest_axis(body_size)
-		var section: Dictionary = VoxelConnectivity.weakest_section(voxels, dims, thin_axis)
-		if section.coverage < threshold:
-			return
-		islands = VoxelConnectivity.split_at_plane(dims, thin_axis, section.pos)
+		return
 	_severing = true
 
 	# Build label array so each hole is assigned to exactly the island that owns it.
