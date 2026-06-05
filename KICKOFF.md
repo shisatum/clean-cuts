@@ -19,20 +19,21 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 - Any script over ~300 lines is a smell — split it.
 - Use explicit `var x: float = ...` typing whenever GDScript can't infer the type (ternaries, ambiguous returns).
 
-**Current state — M0, M1, M2, M3 are complete:**
+**Current state — M0 through M4 + pre-M5 fixes complete:**
 - M0 ✅ Free-fly camera (WASD/QE/Shift/mouselook), crosshair, floor, plank, hitscan raycast logs hits.
-- M1 ✅ Plank is a `CSGCombiner3D`. Clicks bore persistent cylindrical holes aligned to shot direction.
+- M1 ✅ Clicks bore persistent cylindrical holes aligned to shot direction.
 - M2 ✅ Smooth energy gradient: sub-yield = shallow dent, above-yield = through-hole with radius scaling via sqrt curve up to ultimate. Scroll wheel adjusts shot energy live.
 - M3 ✅ `MaterialData.compute_hole(energy)` owns the gradient. `cavity_shape` (0=needle, 1=crater) controls hole profile. Wood: wide holes. Steel: narrow tunnels. Two planks in scene.
+- M4 ✅ Voxel flood-fill severs. Fragments use greedy voxel decomposition for correct shape. Recursive.
+- Pre-M5 fixes ✅ `DestructibleObject` + `FragmentObject` unified into `DestructibleBody extends RigidBody3D`. `sever_threshold` deleted. See REALISTIC_PLAN.md for the two deferred/accepted cosmetic items.
 
-**Current state — M0 through M4 complete:**
-- M4 ✅ Voxel flood-fill severs. Fragments use greedy voxel decomposition for correct shape. Recursive. See REALISTIC_PLAN.md for pre-M5 fix list (4 items, including unused `sever_threshold`).
+**Current branch:** `m5-enemies`
 
-**Next up — Pre-M5 fixes, then M5:**
-- Fix/remove `sever_threshold` on MaterialData (currently unused).
-- Decide on unifying DestructibleObject + FragmentObject (see plan doc).
-- M5: Enemies — destructible, material-based, AI disabled when mass drops below threshold.
+**Next up — M5: Enemies:**
+- Destructible, material-based bodies with simple AI (patrol/chase).
+- Mass-death threshold: compare live voxels to initial voxel count; disable AI and collapse when below threshold (e.g. 50%).
+- Enemy parts use the same `DestructibleBody` system — no new material code needed.
 - M6: Physical projectiles — reintroduce deliberately, in isolation.
-- M7: Multiplayer — host authority + GodotSteam transport, after destruction system is unified.
+- M7: Multiplayer — host authority + GodotSteam transport.
 
-Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M3. Ask before adding anything not listed above.
+Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M5 enemies. Ask before adding anything not listed above.
