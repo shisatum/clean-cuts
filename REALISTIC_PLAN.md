@@ -102,7 +102,10 @@ Each milestone must be *fun or stable* before you start the next. If a milestone
   3. ✅ Deleted `sever_threshold` from `MaterialData` and both `.tres` resources — unused dead field removed.
   4. ✅ Unified `DestructibleObject` + `FragmentObject` into `DestructibleBody extends RigidBody3D`. Frozen planks use `freeze = true`; spawned fragments unfrozen. CSG always lives in a `Csg` child at origin so `cyl.position` is consistently body-local in both modes. Old scripts deleted; `main.tscn` updated.
 
-- **M5 — Enemies.** Destructible, material-based bodies that move. An enemy is a `DestructibleBody` with simple AI. Mass-death threshold: compare live voxels to initial voxel count — when a configurable percentage is lost (e.g. 50%), disable AI and let the body collapse. Enemy parts are the same wood/steel destructible objects already built; no new material system needed.
+- **M5 — Enemies. 🔧 in progress**
+  - Step 1 (current): single-part box enemy. `Enemy extends DestructibleBody`. Patrol AI via `_integrate_forces`; angular X/Z axes locked so it stays upright, unlocked on death. `DestructibleBody` emits `mass_changed(solid_count)` after every connectivity check; enemy connects to it and calls `_die()` when `solid_count / initial_voxels <= (1 - death_threshold)`. Default threshold: 50%.
+  - Step 2 (next): multi-part enemies (torso + limbs), once single-part is confirmed fun.
+  - **Definition of done for Step 1:** Enemy patrols back and forth. Shooting it carves persistent holes. After enough damage it stops moving and tips over. Fragments still fly if it severs. 60 fps throughout.
 - **M6 — Physical projectiles (optional).** *Now* add launched rigid bodies, if you still want them. Re-introduce ballistic handling deliberately and in isolation, not as a foundation.
 - **M7 — Multiplayer.** Host-authority P2P using Godot's built-in MultiplayerAPI (ENet) + GodotSteam as the transport layer (NAT traversal, no port-forwarding). Architecture: host runs physics and CSG, broadcasts cut events (position/normal/radius structs) and spawns fragments via `MultiplayerSpawner`; clients are dumb renderers. Add only after the destruction system is unified and stable — syncing a partially-unified system compounds the pain.
 - **M8 — Sword/slash tool.** Re-analyse once M6 is in — depends on whether physical objects are implemented.

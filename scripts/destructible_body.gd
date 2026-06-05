@@ -8,6 +8,10 @@ extends RigidBody3D
 const TARGET_VOXELS     := 900
 const MIN_FRAG_FRACTION := 0.08
 
+## Emitted after each hole is applied with the number of solid voxels remaining.
+## Connect to this signal to track mass loss (e.g. for enemy health thresholds).
+signal mass_changed(solid_count: int)
+
 var _csg: CSGCombiner3D
 var _ray_col: CollisionShape3D
 var _last_hit_dir: Vector3
@@ -111,6 +115,7 @@ func _check_connectivity() -> void:
 	var voxels: PackedByteArray = VoxelConnectivity.build_grid_with_shapes(
 		body_size, dims, body_boxes, holes) if body_boxes.size() > 1 \
 		else VoxelConnectivity.build_grid(body_size, dims, holes)
+	mass_changed.emit(voxels.count(1))
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
 		return

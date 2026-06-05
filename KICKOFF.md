@@ -29,11 +29,16 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 
 **Current branch:** `m5-enemies`
 
-**Next up — M5: Enemies:**
-- Destructible, material-based bodies with simple AI (patrol/chase).
-- Mass-death threshold: compare live voxels to initial voxel count; disable AI and collapse when below threshold (e.g. 50%).
-- Enemy parts use the same `DestructibleBody` system — no new material code needed.
+**M5 in progress — Step 1: single-part enemy:**
+- `Enemy extends DestructibleBody` (`scripts/enemy.gd`). Patrol AI in `_integrate_forces`. Dies when voxel mass drops below `death_threshold` (default 50%).
+- `DestructibleBody` emits `mass_changed(solid_count: int)` after each connectivity check — enemy connects to it.
+- Enemy scene: `scenes/enemy.tscn` — reddish 0.5×1.8×0.5m box, wood material.
+- One enemy placed in `main.tscn` at (0, 0.9, 3) for testing.
+- **Done when:** enemy patrols, takes persistent holes, tips over at 50% mass loss, 60 fps.
+- Step 2 (after Step 1 confirmed): multi-part enemies (torso + limbs).
+
+**M6 and beyond:**
 - M6: Physical projectiles — reintroduce deliberately, in isolation.
 - M7: Multiplayer — host authority + GodotSteam transport.
 
-Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M5 enemies. Ask before adding anything not listed above.
+Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then continue M5. Ask before adding anything not listed above.

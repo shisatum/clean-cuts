@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/wood.tres" id="2"]
+
+[sub_resource type="StandardMaterial3D" id="MatEnemy"]
+albedo_color = Color(0.75, 0.25, 0.2, 1)
+
+[node name="Enemy" type="RigidBody3D"]
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1")
+material_data = ExtResource("2")
+body_material = SubResource("MatEnemy")
+
+[node name="Csg" type="CSGCombiner3D" parent="Enemy"]
+
+[node name="Body" type="CSGBox3D" parent="Enemy/Csg"]
+size = Vector3(0.5, 1.8, 0.5)
+material = SubResource("MatEnemy")

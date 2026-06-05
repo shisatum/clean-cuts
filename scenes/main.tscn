@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/fly_camera.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="5"]
 [ext_resource type="Script" path="res://scripts/destructible_body.gd" id="2"]
 [ext_resource type="Resource" path="res://resources/wood.tres" id="3"]
 [ext_resource type="Resource" path="res://resources/steel.tres" id="4"]
@@ -69,6 +70,9 @@ body_material = SubResource("MatSteel")
 [node name="Body" type="CSGBox3D" parent="PlankSteel/Csg"]
 size = Vector3(0.15, 0.8, 2.5)
 material = SubResource("MatSteel")
+
+[node name="Enemy" parent="." instance=ExtResource("5")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 3)
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.9659, 0.2588, 0, -0.2588, 0.9659, 0, 2.0, 8.0)
