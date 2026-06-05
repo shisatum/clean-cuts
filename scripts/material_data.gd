@@ -10,9 +10,6 @@ extends Resource
 @export_group("Damage Shape")
 ## 0.0 = narrow deep needle (steel), 1.0 = wide shallow crater (wood).
 @export_range(0.0, 1.0) var cavity_shape: float = 0.5
-## Fraction of cross-section that must be removed before the material severs.
-## Reserved for future refinement — voxel connectivity currently severs on full disconnection.
-@export_range(0.0, 1.0) var sever_threshold: float = 0.85
 
 ## Returns Vector2(radius, height). Zero vector means no mark.
 func compute_hole(energy: float) -> Vector2:

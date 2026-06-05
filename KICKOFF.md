@@ -31,6 +31,8 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 **Next up — Pre-M5 fixes, then M5:**
 - Fix/remove `sever_threshold` on MaterialData (currently unused).
 - Decide on unifying DestructibleObject + FragmentObject (see plan doc).
-- M5: Physical projectiles — reintroduce deliberately, in isolation.
+- M5: Enemies — destructible, material-based, AI disabled when mass drops below threshold.
+- M6: Physical projectiles — reintroduce deliberately, in isolation.
+- M7: Multiplayer — host authority + GodotSteam transport, after destruction system is unified.
 
 Read `REALISTIC_PLAN.md`, check the current branch (`git branch`), then build M3. Ask before adding anything not listed above.

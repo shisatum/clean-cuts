@@ -1,21 +1,80 @@
-extends CSGCombiner3D
+class_name DestructibleBody
+extends RigidBody3D
 
 @export var material_data: MaterialData
-@export var body_material: Material       # set in scene; propagated to all fragments
+@export var body_material: Material
 @export var body_size: Vector3 = Vector3(0.15, 0.8, 2.5)
 
 const TARGET_VOXELS     := 900
 const MIN_FRAG_FRACTION := 0.08
 
+var _csg: CSGCombiner3D
+var _ray_col: CollisionShape3D
 var _last_hit_dir: Vector3
 var _severing := false
 
+# Called automatically for scene-placed nodes (planks).
 func _ready() -> void:
-	var body_nd := get_node_or_null("Body")
+	_csg = get_node_or_null("Csg") as CSGCombiner3D
+	if _csg == null:
+		return
+	_csg.use_collision = false
+	var body_nd: Node = _csg.get_node_or_null("Body")
 	if body_nd is CSGBox3D:
 		body_size = (body_nd as CSGBox3D).size
 		if body_material == null:
 			body_material = (body_nd as CSGBox3D).material
+	_init_colliders()
+	call_deferred("_rebuild_collision")
+
+# Called immediately after add_child() for dynamically spawned fragments.
+func setup(size: Vector3, mat: MaterialData, body_mat: Material,
+		create_body_box: bool = true) -> void:
+	body_size     = size
+	material_data = mat
+	body_material = body_mat
+	_csg = CSGCombiner3D.new()
+	_csg.name = "Csg"
+	_csg.use_collision = false
+	add_child(_csg)
+	if create_body_box:
+		var box := CSGBox3D.new()
+		box.size     = size
+		box.material = body_mat
+		_csg.add_child(box)
+	_init_colliders()
+	call_deferred("_rebuild_collision")
+
+func _init_colliders() -> void:
+	var col       := CollisionShape3D.new()
+	var box_shape := BoxShape3D.new()
+	box_shape.size = body_size
+	col.shape = box_shape
+	add_child(col)
+	var ray_area := Area3D.new()
+	ray_area.collision_layer = 2
+	ray_area.collision_mask  = 0
+	add_child(ray_area)
+	_ray_col = CollisionShape3D.new()
+	ray_area.add_child(_ray_col)
+
+# Adds one solid box to build up a fragment's base shape voxel-by-voxel.
+func add_body_box(local_pos: Vector3, sz: Vector3) -> void:
+	var b := CSGBox3D.new()
+	b.size     = sz
+	b.material = body_material
+	b.position = local_pos
+	_csg.add_child(b)
+
+# Copies an existing hole cylinder (by world transform) into this body's CSG tree.
+func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> void:
+	var cyl := CSGCylinder3D.new()
+	cyl.radius    = radius
+	cyl.height    = height
+	cyl.sides     = 8
+	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
+	_csg.add_child(cyl)
+	cyl.global_transform = t
 
 func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> void:
 	var hole: Vector2 = material_data.compute_hole(energy) if material_data \
@@ -28,26 +87,35 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	cyl.height    = hole.y
 	cyl.sides     = 8
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
-	add_child(cyl)
+	_csg.add_child(cyl)
 	_align_to_direction(cyl, global_hit_pos, direction)
 	call_deferred("_check_connectivity")
+	call_deferred("_rebuild_collision")
 
-func _check_connectivity() -> void:
-	if _severing or not is_inside_tree():
-		return
-	var holes: Array = get_children().filter(
+func _get_holes() -> Array:
+	return _csg.get_children().filter(
 		func(c: Node) -> bool:
 			return c is CSGCylinder3D \
 				and (c as CSGCylinder3D).operation == CSGShape3D.OPERATION_SUBTRACTION
 	)
-	var dims: Vector3i           = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
-	var voxels: PackedByteArray  = VoxelConnectivity.build_grid(body_size, dims, holes)
+
+func _get_body_boxes() -> Array:
+	return _csg.get_children().filter(func(c: Node) -> bool: return c is CSGBox3D)
+
+func _check_connectivity() -> void:
+	if _severing or not is_inside_tree():
+		return
+	var holes: Array      = _get_holes()
+	var dims: Vector3i    = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
+	var body_boxes: Array = _get_body_boxes()
+	var voxels: PackedByteArray = VoxelConnectivity.build_grid_with_shapes(
+		body_size, dims, body_boxes, holes) if body_boxes.size() > 1 \
+		else VoxelConnectivity.build_grid(body_size, dims, holes)
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
 	if islands.size() < 2:
 		return
 	_severing = true
 
-	# Build label array so each hole is assigned to exactly the island that owns it.
 	var labels := PackedInt32Array()
 	labels.resize(voxels.size())
 	labels.fill(-1)
@@ -55,21 +123,20 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	var min_vox: int       = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
-	var n_islands: int     = islands.size()
-	var body_mat: Material = body_material
+	var min_vox: int   = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+	var n_islands: int = islands.size()
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_mat, i, labels, dims, n_islands)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, dims, n_islands)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
 		n_islands: int) -> void:
-	var frag := FragmentObject.new()
+	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
@@ -90,7 +157,6 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
 
-# Returns true if the voxel at body_local_pos (or any neighbour) belongs to island_label.
 func _hole_in_island(body_local_pos: Vector3, island_label: int,
 		labels: PackedInt32Array, dims: Vector3i) -> bool:
 	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
@@ -108,6 +174,15 @@ func _hole_in_island(body_local_pos: Vector3, island_label: int,
 				if labels[nx + ny * dims.x + nz * dims.x * dims.y] == island_label:
 					return true
 	return false
+
+func _rebuild_collision() -> void:
+	if not is_inside_tree() or not _csg:
+		return
+	var meshes: Array = _csg.get_meshes()
+	if meshes.size() < 2 or not (meshes[1] is ArrayMesh):
+		return
+	if _ray_col:
+		_ray_col.shape = (meshes[1] as ArrayMesh).create_trimesh_shape()
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()

@@ -1,7 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/fly_camera.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/destructible_object.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/destructible_body.gd" id="2"]
 [ext_resource type="Resource" path="res://resources/wood.tres" id="3"]
 [ext_resource type="Resource" path="res://resources/steel.tres" id="4"]
 
@@ -40,27 +40,33 @@ surface_material_override/0 = SubResource("MatFloor")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
 shape = SubResource("ShapeFloor")
 
-[node name="PlankWood" type="CSGCombiner3D" parent="."]
+[node name="PlankWood" type="RigidBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.0, 0.4, 0)
-use_collision = true
-collision_layer = 2
+collision_layer = 1
+collision_mask = 1
+freeze = true
 script = ExtResource("2")
 material_data = ExtResource("3")
 body_material = SubResource("MatWood")
 
-[node name="Body" type="CSGBox3D" parent="PlankWood"]
+[node name="Csg" type="CSGCombiner3D" parent="PlankWood"]
+
+[node name="Body" type="CSGBox3D" parent="PlankWood/Csg"]
 size = Vector3(0.15, 0.8, 2.5)
 material = SubResource("MatWood")
 
-[node name="PlankSteel" type="CSGCombiner3D" parent="."]
+[node name="PlankSteel" type="RigidBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 0.4, 0)
-use_collision = true
-collision_layer = 2
+collision_layer = 1
+collision_mask = 1
+freeze = true
 script = ExtResource("2")
 material_data = ExtResource("4")
 body_material = SubResource("MatSteel")
 
-[node name="Body" type="CSGBox3D" parent="PlankSteel"]
+[node name="Csg" type="CSGCombiner3D" parent="PlankSteel"]
+
+[node name="Body" type="CSGBox3D" parent="PlankSteel/Csg"]
 size = Vector3(0.15, 0.8, 2.5)
 material = SubResource("MatSteel")
 

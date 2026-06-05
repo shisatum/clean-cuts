@@ -102,9 +102,11 @@ Each milestone must be *fun or stable* before you start the next. If a milestone
   3. `sever_threshold` on `MaterialData` is **unused** — `split_at_plane` was removed because it caused false rectangular splits from diagonal shots. Either reimplement against the flood-fill BFS result, or **delete the field** before M5.
   4. Pre-M5 refactor: unify `DestructibleObject` + `FragmentObject` into `DestructibleBody extends Node3D`. Attempted once — regression because `cyl.position` means something different when CSGCombiner3D is the root vs a child. Resolve that coordinate-space inconsistency before retrying.
 
-- **M5 — Physical projectiles (optional).** *Now* add launched rigid bodies, if you still want them. You'll re-introduce ballistic handling deliberately and in isolation, not as a foundation.
-- **M6 — Sword/slash tool.** Re-analyse once M5 is in — depends on whether physical objects are implemented.
-- **M7+ — Everything else:** compound convex decomposition for better concave collision (only if profiling shows it matters), house/structure, fasteners, blunt craters, 1000 m/s sniper rounds, multiplayer, Steam integration — one at a time.
+- **M5 — Enemies.** Destructible, material-based bodies that move. An enemy is a `DestructibleBody` with simple AI. Mass-death threshold: compare live voxels to initial voxel count — when a configurable percentage is lost (e.g. 50%), disable AI and let the body collapse. Enemy parts are the same wood/steel destructible objects already built; no new material system needed.
+- **M6 — Physical projectiles (optional).** *Now* add launched rigid bodies, if you still want them. Re-introduce ballistic handling deliberately and in isolation, not as a foundation.
+- **M7 — Multiplayer.** Host-authority P2P using Godot's built-in MultiplayerAPI (ENet) + GodotSteam as the transport layer (NAT traversal, no port-forwarding). Architecture: host runs physics and CSG, broadcasts cut events (position/normal/radius structs) and spawns fragments via `MultiplayerSpawner`; clients are dumb renderers. Add only after the destruction system is unified and stable — syncing a partially-unified system compounds the pain.
+- **M8 — Sword/slash tool.** Re-analyse once M6 is in — depends on whether physical objects are implemented.
+- **M9+ — Everything else:** Steam lobby/matchmaking integration, compound convex decomposition (only if profiling forces it), house/structure, fasteners, blunt craters, 1000 m/s sniper rounds — one at a time.
 
 You had most of M2–M4 *working* in the old project. The goal isn't to relearn it — it's to rebuild it on a foundation that doesn't collapse.
 

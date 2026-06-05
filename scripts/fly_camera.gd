@@ -101,8 +101,7 @@ func _fire() -> void:
 		hit.normal.snapped(Vector3.ONE * 0.001),
 	])
 
-	# Area3D = fragment accurate shape; its parent is the FragmentObject (RigidBody3D).
-	# StaticBody3D = original plank or floor; its parent is DestructibleObject or scene root.
+	# All DestructibleBody nodes expose an Area3D (layer 2); get_parent() returns the body.
 	var rb: RigidBody3D = null
 	if hit.collider is Area3D and hit.collider.get_parent() is RigidBody3D:
 		rb = hit.collider.get_parent() as RigidBody3D
