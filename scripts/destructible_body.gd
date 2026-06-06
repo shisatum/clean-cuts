@@ -181,38 +181,40 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
 		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
 		frag.add_body_box(a.center - lc, a.size)
+	# Assign holes by AABB overlap rather than voxel-label lookup.
+	# The old label check failed for small holes whose center lands in carved
+	# (void) voxel space, causing scratches and small holes to disappear.
 	for hole: Node in holes:
 		var cyl := hole as CSGCylinder3D
-		var in_this: bool  = _hole_in_island(cyl.position, island_idx, labels, dims)
-		var in_other: bool = false
-		for j: int in range(n_islands):
-			if j != island_idx and _hole_in_island(cyl.position, j, labels, dims):
-				in_other = true
-				break
-		if in_this or (not in_other):
+		if _hole_overlaps_fragment(cyl.position, lc, sz, cyl.radius):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
 	frag._init_voxels()
+	# Pre-carve inherited holes into the voxel grid before baking, so
+	# connectivity checks after the bake (which removes cylinder nodes) are
+	# still accurate.
+	var inherited: Array = frag._get_holes()
+	if inherited.size() > 0:
+		VoxelConnectivity.carve_holes(frag._voxels, frag.body_size, frag._dims, inherited)
+	# Bake the multi-box body into one CSGMesh3D so future bullet holes cut
+	# cleanly like cylinders instead of exposing voxel-square edges.
+	var fmeshes: Array = frag._csg.get_meshes()
+	if fmeshes.size() >= 2 and fmeshes[1] is ArrayMesh:
+		frag._bake_csg(fmeshes[1] as ArrayMesh)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
 
-func _hole_in_island(body_local_pos: Vector3, island_label: int,
-		labels: PackedInt32Array, dims: Vector3i) -> bool:
-	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
-	var xi: int = clamp(int((body_local_pos.x + body_size.x * 0.5) / cell.x), 0, dims.x - 1)
-	var yi: int = clamp(int((body_local_pos.y + body_size.y * 0.5) / cell.y), 0, dims.y - 1)
-	var zi: int = clamp(int((body_local_pos.z + body_size.z * 0.5) / cell.z), 0, dims.z - 1)
-	for dz: int in range(-1, 2):
-		for dy: int in range(-1, 2):
-			for dx: int in range(-1, 2):
-				var nx: int = xi + dx
-				var ny: int = yi + dy
-				var nz: int = zi + dz
-				if nx < 0 or nx >= dims.x or ny < 0 or ny >= dims.y or nz < 0 or nz >= dims.z:
-					continue
-				if labels[nx + ny * dims.x + nz * dims.x * dims.y] == island_label:
-					return true
-	return false
+# Returns true if the cylinder (in body-local space) overlaps this fragment's
+# axis-aligned bounding box. Used to assign holes to fragments at split time.
+# More reliable than voxel-label lookup, which fails when the hole center sits
+# inside carved (void) voxel space.
+func _hole_overlaps_fragment(cyl_pos: Vector3, frag_center: Vector3,
+		frag_size: Vector3, cyl_radius: float) -> bool:
+	var half: Vector3 = frag_size * 0.5
+	var d: Vector3    = (cyl_pos - frag_center).abs()
+	return d.x <= half.x + cyl_radius \
+		and d.y <= half.y + cyl_radius \
+		and d.z <= half.z + cyl_radius
 
 func _init_voxels() -> void:
 	if _csg == null:
