@@ -161,45 +161,53 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	var min_vox: int   = int(_dims.x * _dims.y * _dims.z * min_frag_fraction)
-	var n_islands: int = islands.size()
+	# Bake the current CSG mesh once and share it across all fragments.
+	# Each fragment uses this mesh clipped to its AABB for a clean visual —
+	# no voxel-box decomposition, so existing holes stay cylinder-shaped.
+	var baked: ArrayMesh = null
+	var cm: Array = _csg.get_meshes()
+	if cm.size() >= 2 and cm[1] is ArrayMesh:
+		baked = cm[1] as ArrayMesh
+
+	var min_vox: int = int(_dims.x * _dims.y * _dims.z * min_frag_fraction)
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, n_islands)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
-		n_islands: int) -> void:
+		baked: ArrayMesh) -> void:
 	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
-	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
-		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
-		frag.add_body_box(a.center - lc, a.size)
-	# Assign holes by AABB overlap rather than voxel-label lookup.
-	# The old label check failed for small holes whose center lands in carved
-	# (void) voxel space, causing scratches and small holes to disappear.
-	for hole: Node in holes:
-		var cyl := hole as CSGCylinder3D
-		if _hole_overlaps_fragment(cyl.position, lc, sz, cyl.radius):
-			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
+	if baked != null:
+		# Use the original baked mesh (shifted into fragment-local space) clipped
+		# to this island's AABB via CSG intersection. All pre-existing holes are
+		# already in the mesh — no cylinder transfer needed, no voxel-box body.
+		var mesh_nd := CSGMesh3D.new()
+		mesh_nd.mesh     = baked
+		mesh_nd.material = body_mat
+		mesh_nd.position = -lc   # shift body-local mesh origin → fragment-local
+		frag._csg.add_child(mesh_nd)
+		var clip := CSGBox3D.new()
+		clip.size      = sz
+		clip.operation = CSGShape3D.OPERATION_INTERSECTION
+		frag._csg.add_child(clip)
+	else:
+		# Fallback (no mesh available): voxel decomposition + cylinder transfer.
+		for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
+			var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
+			frag.add_body_box(a.center - lc, a.size)
+		for hole: Node in holes:
+			var cyl := hole as CSGCylinder3D
+			if _hole_overlaps_fragment(cyl.position, lc, sz, cyl.radius):
+				frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
 	frag._init_voxels()
-	# Pre-carve inherited holes into the voxel grid before baking, so
-	# connectivity checks after the bake (which removes cylinder nodes) are
-	# still accurate.
-	var inherited: Array = frag._get_holes()
-	if inherited.size() > 0:
-		VoxelConnectivity.carve_holes(frag._voxels, frag.body_size, frag._dims, inherited)
-	# Bake the multi-box body into one CSGMesh3D so future bullet holes cut
-	# cleanly like cylinders instead of exposing voxel-square edges.
-	var fmeshes: Array = frag._csg.get_meshes()
-	if fmeshes.size() >= 2 and fmeshes[1] is ArrayMesh:
-		frag._bake_csg(fmeshes[1] as ArrayMesh)
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
@@ -229,7 +237,7 @@ func _init_voxels() -> void:
 
 func _rebuild_collision() -> void:
 	_collision_pending = false
-	if not is_inside_tree() or not _csg:
+	if _severing or not is_inside_tree() or not _csg:
 		return
 	var meshes: Array = _csg.get_meshes()
 	if meshes.size() < 2 or not (meshes[1] is ArrayMesh):
