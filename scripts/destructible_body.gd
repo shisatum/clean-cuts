@@ -22,6 +22,8 @@ signal collision_rebuilt(shape_node: CollisionShape3D)
 
 var _csg: CSGCombiner3D
 var _ray_col: CollisionShape3D
+var _phys_col: CollisionShape3D = null
+var _trimesh_frozen: bool = false
 var _last_hit_dir: Vector3
 var _severing := false
 var _connectivity_pending: bool = false
@@ -77,6 +79,11 @@ func _init_colliders() -> void:
 		box_shape.size = body_size
 		col.shape = box_shape
 		add_child(col)
+	for c: Node in get_children():
+		if c is CollisionShape3D:
+			_phys_col = c as CollisionShape3D
+			break
+	sleeping_state_changed.connect(_on_sleeping_state_changed)
 	# Build the Area3D complete — shape added as child BEFORE the area enters
 	# the tree. Jolt registers an area's shapes at tree-entry time; adding a
 	# shape after the area is already in the tree is deferred by one physics
@@ -112,6 +119,7 @@ func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> vo
 	_hole_records.append({lt = cyl.transform, r = radius, h = height})
 
 func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> void:
+	_restore_box_collision()
 	var hole: Vector2 = material_data.compute_hole(energy) if material_data \
 		else (Vector2(0.06, 0.4) if energy >= 40.0 else Vector2.ZERO)
 	if hole.x < 0.005:
@@ -255,6 +263,32 @@ func _rebuild_collision() -> void:
 		collision_rebuilt.emit(_ray_col)
 	if _get_holes().size() >= CSG_BAKE_THRESHOLD:
 		_bake_csg(mesh)
+
+# When Jolt puts the body to sleep, swap the physics shape to the accurate
+# trimesh and freeze — Jolt treats frozen bodies as static, so ConcavePolygonShape3D
+# works. Objects resting on a carved body then collide with its real surface.
+func _on_sleeping_state_changed() -> void:
+	if _severing or _trimesh_frozen:
+		return
+	if sleeping and _phys_col != null \
+			and _ray_col != null and _ray_col.shape is ConcavePolygonShape3D:
+		_trimesh_frozen = true
+		_phys_col.shape = _ray_col.shape
+		collision_rebuilt.emit(_phys_col)
+		freeze_mode = FREEZE_MODE_STATIC
+		freeze = true
+
+# Reverts to a BoxShape3D and unfreezes so the body can simulate again.
+# Called by apply_hole() before any new damage is applied.
+func _restore_box_collision() -> void:
+	if not _trimesh_frozen or _phys_col == null:
+		return
+	_trimesh_frozen = false
+	freeze = false
+	var box := BoxShape3D.new()
+	box.size = body_size
+	_phys_col.shape = box
+	collision_rebuilt.emit(_phys_col)
 
 func _bake_csg(baked: ArrayMesh) -> void:
 	for child: Node in _csg.get_children():
