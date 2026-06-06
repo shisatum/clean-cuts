@@ -187,6 +187,10 @@ func _check_connectivity() -> void:
 		var sz: Vector3      = aabb.size
 		var boxes: Array[Dictionary] = VoxelConnectivity.decompose_island(labels, i, _dims)
 		_spawn_fragment(ac, sz, body_material, boxes)
+	# Remove this body from all collision layers immediately so Jolt stops
+	# testing it against the freshly spawned fragments before queue_free() lands.
+	collision_layer = 0
+	collision_mask  = 0
 	if is_instance_valid(_csg):
 		_csg.visible = false
 	queue_free()
