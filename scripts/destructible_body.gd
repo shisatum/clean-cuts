@@ -28,6 +28,7 @@ var _collision_pending: bool    = false
 var _voxels: PackedByteArray    = PackedByteArray()
 var _dims: Vector3i             = Vector3i.ZERO
 var _carved_count: int          = 0
+var _hole_records: Array[Dictionary] = []
 
 # Called automatically for scene-placed nodes (planks).
 func _ready() -> void:
@@ -106,6 +107,7 @@ func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> vo
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
 	_csg.add_child(cyl)
 	cyl.global_transform = t
+	_hole_records.append({tr = t, r = radius, h = height, lp = cyl.position})
 
 func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> void:
 	var hole: Vector2 = material_data.compute_hole(energy) if material_data \
@@ -120,6 +122,7 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
 	_csg.add_child(cyl)
 	_align_to_direction(cyl, global_hit_pos, direction)
+	_hole_records.append({tr = cyl.global_transform, r = hole.x, h = hole.y, lp = cyl.position})
 	if not _connectivity_pending:
 		_connectivity_pending = true
 		call_deferred("_check_connectivity")
@@ -161,14 +164,6 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	# Bake the current CSG mesh once — shared across all fragments so they use
-	# the original clean geometry (cylinder holes intact) rather than voxel boxes.
-	var baked: ArrayMesh = null
-	var cm: Array = _csg.get_meshes()
-	if cm.size() >= 2 and cm[1] is ArrayMesh:
-		baked = cm[1] as ArrayMesh
-
-	# Compute each island's centroid (body-local) for clip-plane calculation.
 	var cell: Vector3   = Vector3(body_size.x / _dims.x, body_size.y / _dims.y, body_size.z / _dims.z)
 	var go: Vector3     = -body_size * 0.5
 	var centroids: Array[Vector3] = []
@@ -185,83 +180,27 @@ func _check_connectivity() -> void:
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
-		var osum := Vector3.ZERO
-		var ocnt: int = 0
-		for j: int in range(islands.size()):
-			if j == i:
-				continue
-			osum += centroids[j] * float(islands[j].size())
-			ocnt += islands[j].size()
-		var other_c: Vector3 = osum / float(ocnt) if ocnt > 0 else centroids[i] + Vector3.UP
-		var clip_n: Vector3  = (other_c - centroids[i]).normalized()
-		# Shared clip plane at midpoint of the inter-island voxel gap. Both fragments
-		# clip to exactly complementary half-spaces, so the overlap zone (the source
-		# of ghost geometry) is eliminated even with only 1 voxel of separation.
-		var half_cell_ext: float = (absf(cell.x * clip_n.x) + absf(cell.y * clip_n.y) + absf(cell.z * clip_n.z)) * 0.5
-		var max_proj_i: float  = -INF
-		var min_proj_oth: float = INF
-		for vox_idx: int in range(labels.size()):
-			var lab: int = labels[vox_idx]
-			if lab < 0 or islands[lab].size() < min_vox: continue
-			var vx2: int = vox_idx % _dims.x
-			var vy2: int = floori(float(vox_idx) / _dims.x) % _dims.y
-			var vz2: int = floori(float(vox_idx) / (_dims.x * _dims.y))
-			var proj: float = (go + Vector3((vx2 + 0.5) * cell.x, (vy2 + 0.5) * cell.y, (vz2 + 0.5) * cell.z)).dot(clip_n)
-			if lab == i: max_proj_i = maxf(max_proj_i, proj)
-			else: min_proj_oth = minf(min_proj_oth, proj)
-		var clip_d: float = (max_proj_i + min_proj_oth) * 0.5 if min_proj_oth < INF and min_proj_oth > max_proj_i else max_proj_i + half_cell_ext
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		# Use centroid (not AABB center) so both fragments' cut faces map to the
-		# same world position: centroids lie on the clip_n axis by construction,
-		# making their perpendicular displacement zero and the cut faces coincident.
-		_spawn_fragment(centroids[i], aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_d)
+		_spawn_fragment(centroids[i], aabb.size, body_material, i, labels, _dims)
 	# Hide our CSG immediately so the original body's full mesh does not render
 	# for the one frame between queue_free() and the end-of-frame GC step.
 	if is_instance_valid(_csg):
 		_csg.visible = false
 	queue_free()
 
-func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
-		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
-		baked: ArrayMesh, clip_n: Vector3, clip_d: float) -> void:
+func _spawn_fragment(lc: Vector3, sz: Vector3, body_mat: Material,
+		island_idx: int, labels: PackedInt32Array, dims: Vector3i) -> void:
 	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
-	if baked != null:
-		# Original baked mesh shifted into fragment-local space, clipped to this
-		# island's half-space by an oriented CSGBox3D. Plane is positioned at the
-		# max voxel projection of THIS island onto clip_n (tight boundary), not
-		# the AABB face (which over-includes for diagonal/L-shaped cuts).
-		var mesh_nd := CSGMesh3D.new()
-		mesh_nd.mesh     = baked
-		mesh_nd.material = body_mat
-		mesh_nd.position = -lc
-		frag._csg.add_child(mesh_nd)
-		var yref: Vector3       = Vector3.UP if absf(clip_n.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
-		var xax: Vector3        = yref.cross(clip_n).normalized()
-		var yax: Vector3        = clip_n.cross(xax).normalized()
-		# clip_d is body-local; shift to fragment-local (fragment origin = lc in body space)
-		var clip_d_local: float = clip_d - lc.dot(clip_n)
-		var clip := CSGBox3D.new()
-		clip.size      = Vector3(1000.0, 1000.0, 1000.0)
-		# SUBTRACTION removes the OTHER island's half-space, leaving our half.
-		# More robust than INTERSECTION on baked meshes that have overlapping-
-		# cylinder artefacts (non-manifold edges that confuse the INTERSECTION path).
-		clip.operation = CSGShape3D.OPERATION_SUBTRACTION
-		clip.material  = body_mat
-		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_n * (clip_d_local + 500.0))
-		frag._csg.add_child(clip)
-	else:
-		# Fallback (no mesh available): voxel decomposition + cylinder transfer.
-		for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
-			var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
-			frag.add_body_box(a.center - lc, a.size)
-		for hole: Node in holes:
-			var cyl := hole as CSGCylinder3D
-			if _hole_overlaps_fragment(cyl.position, lc, sz, cyl.radius):
-				frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
+	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
+		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
+		frag.add_body_box(a.center - lc, a.size)
+	for rec: Dictionary in _hole_records:
+		if _hole_overlaps_fragment(rec.lp, lc, sz, rec.r):
+			frag.add_hole_from_transform(rec.tr, rec.r, rec.h)
 	frag._init_voxels()
 	var ang_dir := Vector3(lc.z, 0.0, -lc.x)
 	var ang: Vector3 = global_transform.basis * (ang_dir.normalized() if ang_dir.length_squared() > 1e-6 else Vector3.RIGHT) * 1.5
