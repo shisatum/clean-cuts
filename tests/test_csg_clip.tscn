@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://btest_csg_clip"]
+
+[ext_resource type="Script" path="res://tests/test_csg_clip.gd" id="1_test"]
+
+[node name="TestCsgClip" type="Node"]
+script = ExtResource("1_test")

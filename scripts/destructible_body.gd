@@ -216,6 +216,10 @@ func _check_connectivity() -> void:
 		# same world position: centroids lie on the clip_n axis by construction,
 		# making their perpendicular displacement zero and the cut faces coincident.
 		_spawn_fragment(centroids[i], aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_d)
+	# Hide our CSG immediately so the original body's full mesh does not render
+	# for the one frame between queue_free() and the end-of-frame GC step.
+	if is_instance_valid(_csg):
+		_csg.visible = false
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
@@ -242,9 +246,12 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		var clip_d_local: float = clip_d - lc.dot(clip_n)
 		var clip := CSGBox3D.new()
 		clip.size      = Vector3(1000.0, 1000.0, 1000.0)
-		clip.operation = CSGShape3D.OPERATION_INTERSECTION
+		# SUBTRACTION removes the OTHER island's half-space, leaving our half.
+		# More robust than INTERSECTION on baked meshes that have overlapping-
+		# cylinder artefacts (non-manifold edges that confuse the INTERSECTION path).
+		clip.operation = CSGShape3D.OPERATION_SUBTRACTION
 		clip.material  = body_mat
-		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_n * (clip_d_local - 500.0))
+		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_n * (clip_d_local + 500.0))
 		frag._csg.add_child(clip)
 	else:
 		# Fallback (no mesh available): voxel decomposition + cylinder transfer.
