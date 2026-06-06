@@ -30,6 +30,8 @@ func _do_spawn() -> void:
 	var px: float = cam.global_position.x if is_instance_valid(cam) else 0.0
 	var pz: float = cam.global_position.z if is_instance_valid(cam) else 0.0
 	enemy.position = Vector3(px + cos(angle) * spawn_radius, 0.9, pz + sin(angle) * spawn_radius)
+	if cam and cam.get("enemy_speed") != null:
+		enemy.move_speed = cam.enemy_speed
 	get_parent().add_child(enemy)
 	enemy.tree_exited.connect(_on_enemy_gone)
 	print("[EnemySpawner] spawned enemy at ", enemy.position)

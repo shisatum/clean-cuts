@@ -11,6 +11,7 @@ var _player: Node3D
 
 func _ready() -> void:
 	super()
+	add_to_group("enemies")
 	axis_lock_angular_x = true
 	axis_lock_angular_z = true
 	_player = get_viewport().get_camera_3d()

@@ -36,6 +36,9 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 - Enemy scene: `scenes/enemy.tscn` — reddish 0.5×1.8×0.5m box, wood material.
 - `EnemySpawner` node in `main.tscn` (`scripts/enemy_spawner.gd`): spawns one enemy at a random angle around the camera (radius 8m, floor expanded to 60×60); respawns 2s after each death. Uses `call_deferred("_do_spawn")` to avoid parent-busy error.
 - **Machine gun:** right-click held fires at 80ms interval via `Timer` in `fly_camera.gd`.
+- **Camera:** WASD/Shift locked to XZ plane; Q/E for vertical.
+- **HUD controls** (Escape to uncapture mouse): *Enemy Speed* slider (0–10, default 1.5) — live enemies + new spawns; *Wireframe* toggle; *Show Collision* toggle (green=physics box, blue=trimesh, auto-updates on fracture via `collision_rebuilt` signal).
+- **Ghost collision fix:** dying body's `collision_layer/mask` zeroed before `queue_free()` so Jolt drops it before fragments are added — prevents hover-at-split-point.
 - **Performance:** three fixes in `destructible_body.gd` + `voxel_connectivity.gd` — (1) debounce flags prevent frame stacking, (2) incremental `_voxels` cache + `carve_holes()` keeps voxel cost O(V) per shot, (3) `_bake_csg()` collapses CSG tree to `CSGMesh3D` after 20 holes (`CSG_BAKE_THRESHOLD`).
 - **Raycast collision:** Area3D (layer 2) with trimesh shape — `_rebuild_collision()` bakes the CSG mesh after each hole so rays accurately pass through existing damage. Scene-defined `BodyCollision` (BoxShape3D) handles physics separately.
 - **Scene file lesson:** In `.tscn` files, direct children of the root node MUST use `parent="."`, NOT `parent="RootName"`. Wrong paths silently orphan the child nodes at instantiation — no error in-editor, just missing children at runtime.

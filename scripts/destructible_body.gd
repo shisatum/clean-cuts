@@ -18,6 +18,7 @@ const CSG_BAKE_THRESHOLD := 20
 ## Emitted after each hole is applied with the number of solid voxels remaining.
 ## Connect to this signal to track mass loss (e.g. for enemy health thresholds).
 signal mass_changed(solid_count: int)
+signal collision_rebuilt(shape_node: CollisionShape3D)
 
 var _csg: CSGCombiner3D
 var _ray_col: CollisionShape3D
@@ -251,6 +252,7 @@ func _rebuild_collision() -> void:
 	var mesh: ArrayMesh = meshes[1] as ArrayMesh
 	if _ray_col:
 		_ray_col.shape = mesh.create_trimesh_shape()
+		collision_rebuilt.emit(_ray_col)
 	if _get_holes().size() >= CSG_BAKE_THRESHOLD:
 		_bake_csg(mesh)
 
