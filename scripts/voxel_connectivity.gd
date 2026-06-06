@@ -217,6 +217,26 @@ static func carve_holes(voxels: PackedByteArray, body_size: Vector3,
 					if Vector2(p.x, p.z).length() <= r and absf(p.y) <= hh:
 						voxels[i] = 0
 
+# Carves away every solid voxel whose centre lies on the far side of a plane,
+# in-place. n/d are in the same local centred space as build_grid (origin at the
+# body centre). Used to keep a fragment's voxel grid consistent with the
+# CSGBox3D clip-plane that flattens its fracture face: both remove proj·n > d.
+static func carve_halfspace(voxels: PackedByteArray, body_size: Vector3,
+		dims: Vector3i, n: Vector3, d: float) -> void:
+	var cell   := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	var origin := Vector3(-body_size.x * 0.5, -body_size.y * 0.5, -body_size.z * 0.5)
+	for zi: int in range(dims.z):
+		for yi: int in range(dims.y):
+			for xi: int in range(dims.x):
+				var i: int = xi + yi * dims.x + zi * dims.x * dims.y
+				if voxels[i] == 0:
+					continue
+				var p := origin + Vector3(
+					(xi + 0.5) * cell.x, (yi + 0.5) * cell.y, (zi + 0.5) * cell.z)
+				if p.dot(n) > d:
+					voxels[i] = 0
+
+
 static func _neighbors(v: Vector3i, dims: Vector3i) -> Array[Vector3i]:
 	var result: Array[Vector3i] = []
 	var offsets: Array[Vector3i] = [

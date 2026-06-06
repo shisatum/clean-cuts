@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://btest_split_fragments"]
+
+[ext_resource type="Script" path="res://tests/test_split_fragments.gd" id="1_test"]
+
+[node name="TestSplitFragments" type="Node"]
+script = ExtResource("1_test")

@@ -107,7 +107,7 @@ func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> vo
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
 	_csg.add_child(cyl)
 	cyl.global_transform = t
-	_hole_records.append({tr = t, r = radius, h = height, lp = cyl.position})
+	_hole_records.append({lt = cyl.transform, r = radius, h = height})
 
 func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> void:
 	var hole: Vector2 = material_data.compute_hole(energy) if material_data \
@@ -122,7 +122,10 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
 	_csg.add_child(cyl)
 	_align_to_direction(cyl, global_hit_pos, direction)
-	_hole_records.append({tr = cyl.global_transform, r = hole.x, h = hole.y, lp = cyl.position})
+	# Store the hole body-local (cyl sits under _csg at the body origin), so it can
+	# be replayed onto a fragment via this body's current world transform even
+	# after the body has moved. Survives _bake_csg() destroying the live cylinders.
+	_hole_records.append({lt = cyl.transform, r = hole.x, h = hole.y})
 	if not _connectivity_pending:
 		_connectivity_pending = true
 		call_deferred("_check_connectivity")
@@ -138,7 +141,12 @@ func _get_holes() -> Array:
 	)
 
 func _get_body_boxes() -> Array:
-	return _csg.get_children().filter(func(c: Node) -> bool: return c is CSGBox3D)
+	# UNION boxes only — a SUBTRACTION CSGBox3D is the fracture clip plane, not solid.
+	return _csg.get_children().filter(
+		func(c: Node) -> bool:
+			return c is CSGBox3D \
+				and (c as CSGBox3D).operation == CSGShape3D.OPERATION_UNION
+	)
 
 func _check_connectivity() -> void:
 	_connectivity_pending = false
@@ -180,32 +188,92 @@ func _check_connectivity() -> void:
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
+		# Clip-plane normal: from this island's centroid toward the mass-weighted
+		# centroid of all the others. Approximates the fracture surface (docs M5
+		# "Plane-split for the visual face", option 3).
+		var osum := Vector3.ZERO
+		var ocnt: int = 0
+		for j: int in range(islands.size()):
+			if j == i:
+				continue
+			osum += centroids[j] * float(islands[j].size())
+			ocnt += islands[j].size()
+		var other_c: Vector3 = osum / float(ocnt) if ocnt > 0 else centroids[i] + Vector3.UP
+		var clip_n: Vector3  = (other_c - centroids[i]).normalized()
+		# Plane offset = midpoint of the inter-island voxel gap along clip_n. Both
+		# fragments clip to exactly complementary half-spaces, so they tile the
+		# original with no overlap (no ghost geometry) and meet at one flat face.
+		var half_cell_ext: float = (absf(cell.x * clip_n.x) + absf(cell.y * clip_n.y) + absf(cell.z * clip_n.z)) * 0.5
+		var max_proj_i: float   = -INF
+		var min_proj_oth: float =  INF
+		for vox_idx: int in range(labels.size()):
+			var lab: int = labels[vox_idx]
+			if lab < 0 or islands[lab].size() < min_vox:
+				continue
+			var vx2: int = vox_idx % _dims.x
+			var vy2: int = floori(float(vox_idx) / _dims.x) % _dims.y
+			var vz2: int = floori(float(vox_idx) / (_dims.x * _dims.y))
+			var proj: float = (go + Vector3((vx2 + 0.5) * cell.x, (vy2 + 0.5) * cell.y, (vz2 + 0.5) * cell.z)).dot(clip_n)
+			if lab == i: max_proj_i = maxf(max_proj_i, proj)
+			else: min_proj_oth = minf(min_proj_oth, proj)
+		# Guard against min_proj_oth == INF (no other VALID island — all dust):
+		# fall back to just past our own extent so the plane clips nothing.
+		var clip_d: float = (max_proj_i + min_proj_oth) * 0.5 if min_proj_oth < INF and min_proj_oth > max_proj_i else max_proj_i + half_cell_ext
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		_spawn_fragment(centroids[i], aabb.size, body_material, i, labels, _dims)
+		_spawn_fragment(aabb.center, aabb.size, body_material, clip_n, clip_d)
 	# Hide our CSG immediately so the original body's full mesh does not render
 	# for the one frame between queue_free() and the end-of-frame GC step.
 	if is_instance_valid(_csg):
 		_csg.visible = false
 	queue_free()
 
-func _spawn_fragment(lc: Vector3, sz: Vector3, body_mat: Material,
-		island_idx: int, labels: PackedInt32Array, dims: Vector3i) -> void:
+func _spawn_fragment(ac: Vector3, sz: Vector3, body_mat: Material,
+		clip_n: Vector3, clip_d: float) -> void:
+	# Smooth fragment, not voxel boxes: a single solid CSGBox3D the size of the
+	# island's AABB, minus the original hole cylinders, minus one oriented
+	# clip-plane box at the shared fracture plane. All inputs are clean CSG
+	# primitives (box/cylinders), so the boolean is reliable — unlike clipping a
+	# baked, non-manifold ArrayMesh, which silently produced ghost geometry.
+	# Fragment origin sits at the AABB centre so the box (and the voxel grid
+	# derived from it) is centred on the node origin with no offset.
 	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
-	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
-	for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
-		var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
-		frag.add_body_box(a.center - lc, a.size)
+	frag.global_transform = Transform3D(global_transform.basis, global_transform * ac)
+	frag.add_body_box(Vector3.ZERO, sz)
 	for rec: Dictionary in _hole_records:
-		if _hole_overlaps_fragment(rec.lp, lc, sz, rec.r):
-			frag.add_hole_from_transform(rec.tr, rec.r, rec.h)
+		if _hole_overlaps_fragment(rec.lt.origin, ac, sz, rec.r):
+			# Replay at the hole's original world position via our current transform.
+			frag.add_hole_from_transform(global_transform * rec.lt, rec.r, rec.h)
+	# clip_d/clip_n are body-local; the fragment shares our basis, so the normal is
+	# unchanged and only the offset shifts (fragment origin = ac in body space).
+	var clip_d_local: float = clip_d - ac.dot(clip_n)
+	frag.add_clip_plane(clip_n, clip_d_local)
 	frag._init_voxels()
-	var ang_dir := Vector3(lc.z, 0.0, -lc.x)
+	# Keep the fragment's voxel grid consistent with the visual clip so later
+	# re-splits see the true (clipped) shape, not the full AABB box.
+	VoxelConnectivity.carve_halfspace(frag._voxels, sz, frag._dims, clip_n, clip_d_local)
+	# Spin proportional to AABB offset; push apart along the cut normal so the two
+	# halves visibly separate at the clean face.
+	var ang_dir := Vector3(ac.z, 0.0, -ac.x)
 	var ang: Vector3 = global_transform.basis * (ang_dir.normalized() if ang_dir.length_squared() > 1e-6 else Vector3.RIGHT) * 1.5
 	frag.angular_velocity = ang
-	frag.linear_velocity  = _last_hit_dir * 0.5
+	frag.linear_velocity  = _last_hit_dir * 0.5 - (global_transform.basis * clip_n) * 1.0
+
+# Adds the oriented SUBTRACTION box that shaves a fragment's fracture face flat.
+# n/d are in this body's local space; the box's local Z axis is the plane normal
+# and it removes the half-space proj·n > d (the side toward the other island).
+func add_clip_plane(n: Vector3, d: float) -> void:
+	var yref: Vector3 = Vector3.UP if absf(n.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+	var xax: Vector3  = yref.cross(n).normalized()
+	var yax: Vector3  = n.cross(xax).normalized()
+	var clip := CSGBox3D.new()
+	clip.size      = Vector3(1000.0, 1000.0, 1000.0)
+	clip.operation = CSGShape3D.OPERATION_SUBTRACTION
+	clip.material  = body_material
+	clip.transform = Transform3D(Basis(xax, yax, n), n * (d + 500.0))
+	_csg.add_child(clip)
 
 # Returns true if the cylinder (in body-local space) overlaps this fragment's
 # axis-aligned bounding box. Used to assign holes to fragments at split time.
