@@ -195,36 +195,37 @@ func _check_connectivity() -> void:
 			ocnt += islands[j].size()
 		var other_c: Vector3 = osum / float(ocnt) if ocnt > 0 else centroids[i] + Vector3.UP
 		var clip_n: Vector3  = (other_c - centroids[i]).normalized()
-		var clip_m: Vector3  = (centroids[i] + other_c) * 0.5
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_m)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked, clip_n)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
-		baked: ArrayMesh, clip_n: Vector3, clip_m: Vector3) -> void:
+		baked: ArrayMesh, clip_n: Vector3) -> void:
 	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
 	if baked != null:
-		# Original baked mesh shifted into fragment-local space, then clipped to
-		# this island's half-space via an oriented CSGBox3D. The clip plane sits at
-		# the midpoint between island centroids — clean flat fracture face, no ghost
-		# geometry, no voxel staircase.
+		# Original baked mesh shifted into fragment-local space, clipped to this
+		# island's half-space by an oriented CSGBox3D. Plane is positioned at this
+		# fragment's own AABB face toward the other island — not at the centroid
+		# midpoint, which would be outside the bounds of a small fragment.
 		var mesh_nd := CSGMesh3D.new()
 		mesh_nd.mesh     = baked
 		mesh_nd.material = body_mat
 		mesh_nd.position = -lc
 		frag._csg.add_child(mesh_nd)
-		var yref: Vector3 = Vector3.UP if absf(clip_n.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
-		var xax: Vector3  = yref.cross(clip_n).normalized()
-		var yax: Vector3  = clip_n.cross(xax).normalized()
+		var yref: Vector3  = Vector3.UP if absf(clip_n.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+		var xax: Vector3   = yref.cross(clip_n).normalized()
+		var yax: Vector3   = clip_n.cross(xax).normalized()
+		var h: Vector3     = sz * 0.5
+		var extent: float  = absf(h.x * clip_n.x) + absf(h.y * clip_n.y) + absf(h.z * clip_n.z)
 		var clip := CSGBox3D.new()
 		clip.size      = Vector3(1000.0, 1000.0, 1000.0)
 		clip.operation = CSGShape3D.OPERATION_INTERSECTION
-		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_m - clip_n * 500.0 - lc)
+		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_n * (extent - 500.0))
 		frag._csg.add_child(clip)
 	else:
 		# Fallback (no mesh available): voxel decomposition + cylinder transfer.
