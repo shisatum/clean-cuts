@@ -219,6 +219,7 @@ func _spawn_fragment(ac: Vector3, sz: Vector3, body_mat: Material,
 		var ba: Dictionary = VoxelConnectivity.aabb_to_local(box_d.mn, box_d.mx, _dims, body_size)
 		frag.add_body_box(ba.center - ac, ba.size)
 		frag._compound_boxes.append({center = ba.center - ac, size = ba.size})
+	frag._apply_compound_boxes()
 	for rec: Dictionary in _hole_records:
 		if _hole_overlaps_fragment(rec.lt.origin, ac, sz, rec.r):
 			frag.add_hole_from_transform(global_transform * rec.lt, rec.r, rec.h)
@@ -284,12 +285,19 @@ func _on_sleeping_state_changed() -> void:
 		freeze = true
 
 # Reverts to compound BoxShape3D nodes and unfreezes so the body can simulate.
-# Falls back to a single body_size box for scene-placed bodies with no compound data.
 func _restore_box_collision() -> void:
 	if not _trimesh_frozen or _phys_col == null:
 		return
 	_trimesh_frozen = false
 	freeze = false
+	_apply_compound_boxes()
+
+# Builds compound BoxShape3D collision from _compound_boxes (one CollisionShape3D
+# per greedy box). Falls back to a single body_size box when _compound_boxes is empty
+# (scene-placed bodies: planks, enemies). Safe to call at spawn time or on wake.
+func _apply_compound_boxes() -> void:
+	if _phys_col == null:
+		return
 	_clear_compound_nodes()
 	if _compound_boxes.is_empty():
 		var box := BoxShape3D.new()
