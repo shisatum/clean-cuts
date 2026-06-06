@@ -24,6 +24,8 @@ var _csg: CSGCombiner3D
 var _ray_col: CollisionShape3D
 var _phys_col: CollisionShape3D = null
 var _trimesh_frozen: bool = false
+var _compound_boxes: Array[Dictionary] = []
+var _compound_col_nodes: Array[CollisionShape3D] = []
 var _last_hit_dir: Vector3
 var _severing := false
 var _connectivity_pending: bool = false
@@ -216,6 +218,7 @@ func _spawn_fragment(ac: Vector3, sz: Vector3, body_mat: Material,
 	for box_d: Dictionary in boxes:
 		var ba: Dictionary = VoxelConnectivity.aabb_to_local(box_d.mn, box_d.mx, _dims, body_size)
 		frag.add_body_box(ba.center - ac, ba.size)
+		frag._compound_boxes.append({center = ba.center - ac, size = ba.size})
 	for rec: Dictionary in _hole_records:
 		if _hole_overlaps_fragment(rec.lt.origin, ac, sz, rec.r):
 			frag.add_hole_from_transform(global_transform * rec.lt, rec.r, rec.h)
@@ -273,22 +276,47 @@ func _on_sleeping_state_changed() -> void:
 	if sleeping and _phys_col != null \
 			and _ray_col != null and _ray_col.shape is ConcavePolygonShape3D:
 		_trimesh_frozen = true
+		_clear_compound_nodes()
+		_phys_col.position = Vector3.ZERO
 		_phys_col.shape = _ray_col.shape
 		collision_rebuilt.emit(_phys_col)
 		freeze_mode = FREEZE_MODE_STATIC
 		freeze = true
 
-# Reverts to a BoxShape3D and unfreezes so the body can simulate again.
-# Called by apply_hole() before any new damage is applied.
+# Reverts to compound BoxShape3D nodes and unfreezes so the body can simulate.
+# Falls back to a single body_size box for scene-placed bodies with no compound data.
 func _restore_box_collision() -> void:
 	if not _trimesh_frozen or _phys_col == null:
 		return
 	_trimesh_frozen = false
 	freeze = false
-	var box := BoxShape3D.new()
-	box.size = body_size
-	_phys_col.shape = box
+	_clear_compound_nodes()
+	if _compound_boxes.is_empty():
+		var box := BoxShape3D.new()
+		box.size = body_size
+		_phys_col.position = Vector3.ZERO
+		_phys_col.shape = box
+	else:
+		for i: int in range(_compound_boxes.size()):
+			var bd: Dictionary = _compound_boxes[i]
+			var box := BoxShape3D.new()
+			box.size = bd.size
+			if i == 0:
+				_phys_col.position = bd.center
+				_phys_col.shape = box
+			else:
+				var cs := CollisionShape3D.new()
+				cs.position = bd.center
+				cs.shape = box
+				add_child(cs)
+				_compound_col_nodes.append(cs)
 	collision_rebuilt.emit(_phys_col)
+
+func _clear_compound_nodes() -> void:
+	for cs: CollisionShape3D in _compound_col_nodes:
+		if is_instance_valid(cs):
+			cs.queue_free()
+	_compound_col_nodes.clear()
 
 func _bake_csg(baked: ArrayMesh) -> void:
 	for child: Node in _csg.get_children():
