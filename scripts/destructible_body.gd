@@ -198,6 +198,20 @@ func _check_connectivity() -> void:
 		var sz: Vector3      = aabb.size
 		var boxes: Array[Dictionary] = VoxelConnectivity.decompose_island(labels, i, _dims)
 		_spawn_fragment(ac, sz, body_material, boxes)
+	# Wake any sleeping bodies that were resting on this one before it disappears.
+	# Jolt does not automatically wake sleeping dynamic bodies when a static (frozen)
+	# body is removed — they stay floating where their support used to be.
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var wake_query := PhysicsShapeQueryParameters3D.new()
+	var wake_box := BoxShape3D.new()
+	wake_box.size = body_size * 1.1
+	wake_query.shape          = wake_box
+	wake_query.transform      = global_transform
+	wake_query.collision_mask = 1
+	wake_query.exclude        = [get_rid()]
+	for contact: Dictionary in space.intersect_shape(wake_query, 32):
+		if contact.collider is RigidBody3D and (contact.collider as RigidBody3D).sleeping:
+			(contact.collider as RigidBody3D).sleeping = false
 	# Remove this body from all collision layers immediately so Jolt stops
 	# testing it against the freshly spawned fragments before queue_free() lands.
 	collision_layer = 0
