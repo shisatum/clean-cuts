@@ -23,7 +23,6 @@ signal collision_rebuilt(shape_node: CollisionShape3D)
 var _csg: CSGCombiner3D
 var _ray_col: CollisionShape3D
 var _phys_col: CollisionShape3D = null
-var _trimesh_frozen: bool = false
 var _compound_boxes: Array[Dictionary] = []
 var _compound_col_nodes: Array[CollisionShape3D] = []
 var _last_hit_dir: Vector3
@@ -121,7 +120,6 @@ func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> vo
 	_hole_records.append({lt = cyl.transform, r = radius, h = height})
 
 func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> void:
-	_restore_box_collision()
 	var hole: Vector2 = material_data.compute_hole(energy) if material_data \
 		else (Vector2(0.06, 0.4) if energy >= 40.0 else Vector2.ZERO)
 	if hole.x < 0.005:
@@ -198,6 +196,10 @@ func _check_connectivity() -> void:
 		var sz: Vector3      = aabb.size
 		var boxes: Array[Dictionary] = VoxelConnectivity.decompose_island(labels, i, _dims)
 		_spawn_fragment(ac, sz, body_material, boxes)
+	# Wake nearby sleeping bodies before disappearing. Jolt intentionally does not
+	# wake neighbors when a body is removed — this is the GDScript equivalent of
+	# ActivateBodiesInAABox, called at the only moment we know support is gone.
+	_wake_nearby_sleeping()
 	# Remove this body from all collision layers immediately so Jolt stops
 	# testing it against the freshly spawned fragments before queue_free() lands.
 	collision_layer = 0
@@ -268,22 +270,10 @@ func _rebuild_collision() -> void:
 	if _get_holes().size() >= CSG_BAKE_THRESHOLD:
 		_bake_csg(mesh)
 
-# When Jolt puts the body to sleep, swap the physics shape to the accurate
-# trimesh and freeze — Jolt treats frozen bodies as static, so ConcavePolygonShape3D
-# works. Objects resting on a carved body then collide with its real surface.
 func _on_sleeping_state_changed() -> void:
-	if _severing or _trimesh_frozen:
+	if _severing:
 		return
-	if sleeping and _phys_col != null \
-			and _ray_col != null and _ray_col.shape is ConcavePolygonShape3D:
-		_trimesh_frozen = true
-		_clear_compound_nodes()
-		_phys_col.position = Vector3.ZERO
-		_phys_col.shape = _ray_col.shape
-		collision_rebuilt.emit(_phys_col)
-		freeze_mode = FREEZE_MODE_STATIC
-		freeze = true
-	elif not sleeping:
+	if not sleeping:
 		_wake_nearby_sleeping()
 
 func _wake_nearby_sleeping() -> void:
@@ -298,14 +288,6 @@ func _wake_nearby_sleeping() -> void:
 	for contact: Dictionary in space.intersect_shape(query, 32):
 		if contact.collider is RigidBody3D and (contact.collider as RigidBody3D).sleeping:
 			(contact.collider as RigidBody3D).sleeping = false
-
-# Reverts to compound BoxShape3D nodes and unfreezes so the body can simulate.
-func _restore_box_collision() -> void:
-	if not _trimesh_frozen or _phys_col == null:
-		return
-	_trimesh_frozen = false
-	freeze = false
-	_apply_compound_boxes()
 
 # Builds compound BoxShape3D collision from _compound_boxes (one CollisionShape3D
 # per greedy box). Falls back to a single body_size box when _compound_boxes is empty
