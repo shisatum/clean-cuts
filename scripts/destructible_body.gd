@@ -185,8 +185,6 @@ func _check_connectivity() -> void:
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
-		# Clip plane: midpoint between this island's centroid and the mass-weighted
-		# centroid of all other islands, normal pointing toward the other side.
 		var osum := Vector3.ZERO
 		var ocnt: int = 0
 		for j: int in range(islands.size()):
@@ -196,37 +194,50 @@ func _check_connectivity() -> void:
 			ocnt += islands[j].size()
 		var other_c: Vector3 = osum / float(ocnt) if ocnt > 0 else centroids[i] + Vector3.UP
 		var clip_n: Vector3  = (other_c - centroids[i]).normalized()
+		# Tight clip: scan every voxel in this island and find the maximum projection
+		# onto clip_n. This is tighter than the AABB face for diagonal/L cuts where
+		# both islands' AABBs overlap in the clip_n direction.
+		var half_cell_ext: float = (absf(cell.x * clip_n.x) + absf(cell.y * clip_n.y) + absf(cell.z * clip_n.z)) * 0.5
+		var max_proj: float = -INF
+		for raw2: int in islands[i]:
+			var vx2: int = raw2 % _dims.x
+			var vy2: int = floori(float(raw2) / _dims.x) % _dims.y
+			var vz2: int = floori(float(raw2) / (_dims.x * _dims.y))
+			var vp: Vector3 = go + Vector3((vx2 + 0.5) * cell.x, (vy2 + 0.5) * cell.y, (vz2 + 0.5) * cell.z)
+			max_proj = maxf(max_proj, vp.dot(clip_n))
+		var clip_d: float    = max_proj + half_cell_ext
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked, clip_n)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_d)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
-		baked: ArrayMesh, clip_n: Vector3) -> void:
+		baked: ArrayMesh, clip_n: Vector3, clip_d: float) -> void:
 	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
 	if baked != null:
 		# Original baked mesh shifted into fragment-local space, clipped to this
-		# island's half-space by an oriented CSGBox3D. Plane is positioned at this
-		# fragment's own AABB face toward the other island — not at the centroid
-		# midpoint, which would be outside the bounds of a small fragment.
+		# island's half-space by an oriented CSGBox3D. Plane is positioned at the
+		# max voxel projection of THIS island onto clip_n (tight boundary), not
+		# the AABB face (which over-includes for diagonal/L-shaped cuts).
 		var mesh_nd := CSGMesh3D.new()
 		mesh_nd.mesh     = baked
 		mesh_nd.material = body_mat
 		mesh_nd.position = -lc
 		frag._csg.add_child(mesh_nd)
-		var yref: Vector3  = Vector3.UP if absf(clip_n.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
-		var xax: Vector3   = yref.cross(clip_n).normalized()
-		var yax: Vector3   = clip_n.cross(xax).normalized()
-		var h: Vector3     = sz * 0.5
-		var extent: float  = absf(h.x * clip_n.x) + absf(h.y * clip_n.y) + absf(h.z * clip_n.z)
+		var yref: Vector3       = Vector3.UP if absf(clip_n.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+		var xax: Vector3        = yref.cross(clip_n).normalized()
+		var yax: Vector3        = clip_n.cross(xax).normalized()
+		# clip_d is body-local; shift to fragment-local (fragment origin = lc in body space)
+		var clip_d_local: float = clip_d - lc.dot(clip_n)
 		var clip := CSGBox3D.new()
 		clip.size      = Vector3(1000.0, 1000.0, 1000.0)
 		clip.operation = CSGShape3D.OPERATION_INTERSECTION
-		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_n * (extent - 500.0))
+		clip.material  = body_mat
+		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_n * (clip_d_local - 500.0))
 		frag._csg.add_child(clip)
 	else:
 		# Fallback (no mesh available): voxel decomposition + cylinder transfer.
