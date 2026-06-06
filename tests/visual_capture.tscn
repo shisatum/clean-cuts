@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvisual_capture"]
+
+[ext_resource type="Script" path="res://tests/visual_capture.gd" id="1_vis"]
+
+[node name="VisualCapture" type="Node3D"]
+script = ExtResource("1_vis")

@@ -8,3 +8,6 @@
 *.pck
 *.zip
 export_presets.cfg
+
+# Visual-capture screenshots (regenerated on demand by tests/visual_capture.tscn)
+/tests/capture*.png

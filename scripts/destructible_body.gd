@@ -105,6 +105,7 @@ func add_hole_from_transform(t: Transform3D, radius: float, height: float) -> vo
 	cyl.height    = height
 	cyl.sides     = 8
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
+	cyl.material  = body_material  # carved hole walls render as the body, not white
 	_csg.add_child(cyl)
 	cyl.global_transform = t
 	_hole_records.append({lt = cyl.transform, r = radius, h = height})
@@ -120,6 +121,7 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	cyl.height    = hole.y
 	cyl.sides     = 8
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
+	cyl.material  = body_material  # carved hole walls render as the body, not white
 	_csg.add_child(cyl)
 	_align_to_direction(cyl, global_hit_pos, direction)
 	# Store the hole body-local (cyl sits under _csg at the body origin), so it can
