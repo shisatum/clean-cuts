@@ -186,18 +186,25 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
 	if baked != null:
-		# Use the original baked mesh (shifted into fragment-local space) clipped
-		# to this island's AABB via CSG intersection. All pre-existing holes are
-		# already in the mesh — no cylinder transfer needed, no voxel-box body.
+		# Original mesh shifted into fragment-local space, then intersected with
+		# the exact island shape (union of voxel boxes inside a sub-combiner).
+		# Tighter than a plain AABB clip — prevents ghost geometry from the other
+		# island on diagonal or irregular splits.
 		var mesh_nd := CSGMesh3D.new()
 		mesh_nd.mesh     = baked
 		mesh_nd.material = body_mat
-		mesh_nd.position = -lc   # shift body-local mesh origin → fragment-local
+		mesh_nd.position = -lc
 		frag._csg.add_child(mesh_nd)
-		var clip := CSGBox3D.new()
-		clip.size      = sz
-		clip.operation = CSGShape3D.OPERATION_INTERSECTION
-		frag._csg.add_child(clip)
+		var island_clip := CSGCombiner3D.new()
+		island_clip.operation = CSGShape3D.OPERATION_INTERSECTION
+		for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
+			var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
+			var b := CSGBox3D.new()
+			b.size     = a.size
+			b.position = a.center - lc
+			b.material = body_mat
+			island_clip.add_child(b)
+		frag._csg.add_child(island_clip)
 	else:
 		# Fallback (no mesh available): voxel decomposition + cylinder transfer.
 		for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
