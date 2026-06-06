@@ -62,17 +62,19 @@ func _init_colliders() -> void:
 		box_shape.size = body_size
 		col.shape = box_shape
 		add_child(col)
-	var ray_area := Area3D.new()
-	ray_area.collision_layer = 2
-	ray_area.collision_mask  = 0
-	add_child(ray_area)
+	# Build the Area3D complete — shape added as child BEFORE the area enters
+	# the tree. Jolt registers an area's shapes at tree-entry time; adding a
+	# shape after the area is already in the tree is deferred by one physics
+	# step, causing the first frame's raycasts to miss.
 	_ray_col = CollisionShape3D.new()
-	# Seed with a box so raycasts land immediately. _rebuild_collision() will
-	# replace this with the accurate CSG trimesh once the mesh has been cooked.
 	var initial_box := BoxShape3D.new()
 	initial_box.size = body_size
 	_ray_col.shape = initial_box
-	ray_area.add_child(_ray_col)
+	var ray_area := Area3D.new()
+	ray_area.collision_layer = 2
+	ray_area.collision_mask  = 0
+	ray_area.add_child(_ray_col)  # shape in first
+	add_child(ray_area)           # then enter tree complete
 
 # Adds one solid box to build up a fragment's base shape voxel-by-voxel.
 func add_body_box(local_pos: Vector3, sz: Vector3) -> void:
