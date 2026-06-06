@@ -175,9 +175,10 @@ func _check_connectivity() -> void:
 	for isl: PackedInt32Array in islands:
 		var s := Vector3.ZERO
 		for raw: int in isl:
-			s += go + Vector3(((raw % _dims.x) + 0.5) * cell.x,
-				(((raw / _dims.x) % _dims.y) + 0.5) * cell.y,
-				((raw / (_dims.x * _dims.y)) + 0.5) * cell.z)
+			var vx: int = raw % _dims.x
+			var vy: int = floori(float(raw) / _dims.x) % _dims.y
+			var vz: int = floori(float(raw) / (_dims.x * _dims.y))
+			s += go + Vector3((vx + 0.5) * cell.x, (vy + 0.5) * cell.y, (vz + 0.5) * cell.z)
 		centroids.append(s / float(isl.size()))
 
 	var min_vox: int = int(_dims.x * _dims.y * _dims.z * min_frag_fraction)
