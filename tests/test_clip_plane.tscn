@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://btest_clip_plane"]
+
+[ext_resource type="Script" path="res://tests/test_clip_plane.gd" id="1_test"]
+
+[node name="TestClipPlane" type="Node"]
+script = ExtResource("1_test")

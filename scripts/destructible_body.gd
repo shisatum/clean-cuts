@@ -209,7 +209,7 @@ func _check_connectivity() -> void:
 			var proj: float = (go + Vector3((vx2 + 0.5) * cell.x, (vy2 + 0.5) * cell.y, (vz2 + 0.5) * cell.z)).dot(clip_n)
 			if lab == i: max_proj_i = maxf(max_proj_i, proj)
 			else: min_proj_oth = minf(min_proj_oth, proj)
-		var clip_d: float = (max_proj_i + min_proj_oth) * 0.5 if min_proj_oth > max_proj_i else max_proj_i + half_cell_ext
+		var clip_d: float = (max_proj_i + min_proj_oth) * 0.5 if min_proj_oth < INF and min_proj_oth > max_proj_i else max_proj_i + half_cell_ext
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
 		# Use centroid (not AABB center) so both fragments' cut faces map to the
@@ -256,7 +256,8 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 			if _hole_overlaps_fragment(cyl.position, lc, sz, cyl.radius):
 				frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
 	frag._init_voxels()
-	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
+	var ang_dir := Vector3(lc.z, 0.0, -lc.x)
+	var ang: Vector3 = global_transform.basis * (ang_dir.normalized() if ang_dir.length_squared() > 1e-6 else Vector3.RIGHT) * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
 
