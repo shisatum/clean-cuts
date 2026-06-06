@@ -246,9 +246,12 @@ func _bake_csg(baked: ArrayMesh) -> void:
 	body.mesh     = baked
 	body.material = body_material
 	_csg.add_child(body)
-	# Do NOT reset _voxels or _carved_count here — the voxel grid already
-	# reflects all damage dealt so far. Resetting would make subsequent
-	# connectivity checks treat the object as fully solid (self-heal bug).
+	# Reset _carved_count to 0 — the cylinder list was just cleared, so the
+	# index must restart from 0. _voxels is NOT reset; all prior damage stays
+	# in the grid. Holes are baked into the ArrayMesh geometry, so they remain
+	# visible. Without this reset, holes.slice(_carved_count) returns [] for
+	# every future shot, freezing the voxel state and preventing all splits.
+	_carved_count = 0
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()
