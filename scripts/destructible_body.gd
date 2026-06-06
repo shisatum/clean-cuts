@@ -246,7 +246,9 @@ func _bake_csg(baked: ArrayMesh) -> void:
 	body.mesh     = baked
 	body.material = body_material
 	_csg.add_child(body)
-	_carved_count = 0
+	# Do NOT reset _voxels or _carved_count here — the voxel grid already
+	# reflects all damage dealt so far. Resetting would make subsequent
+	# connectivity checks treat the object as fully solid (self-heal bug).
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()
