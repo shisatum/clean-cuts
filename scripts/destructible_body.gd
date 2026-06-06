@@ -4,9 +4,14 @@ extends RigidBody3D
 @export var material_data: MaterialData
 @export var body_material: Material
 @export var body_size: Vector3 = Vector3(0.15, 0.8, 2.5)
+## Minimum fragment size as a fraction of total voxel grid volume.
+## Islands smaller than this are silently deleted ("dust").
+## 0.02 = 2 % — keeps pieces down to ~6 cm on a plank, ~4 cm on the enemy.
+## Raise toward 0.05 if too many tiny physics shards appear; lower toward 0.005
+## if meaningful pieces are still vanishing.
+@export_range(0.001, 0.15, 0.001) var min_frag_fraction: float = 0.02
 
-const TARGET_VOXELS     := 900
-const MIN_FRAG_FRACTION := 0.08
+const TARGET_VOXELS := 900
 
 ## Emitted after each hole is applied with the number of solid voxels remaining.
 ## Connect to this signal to track mass loss (e.g. for enemy health thresholds).
@@ -142,7 +147,7 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	var min_vox: int   = int(dims.x * dims.y * dims.z * MIN_FRAG_FRACTION)
+	var min_vox: int   = int(dims.x * dims.y * dims.z * min_frag_fraction)
 	var n_islands: int = islands.size()
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
