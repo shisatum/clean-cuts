@@ -194,18 +194,22 @@ func _check_connectivity() -> void:
 			ocnt += islands[j].size()
 		var other_c: Vector3 = osum / float(ocnt) if ocnt > 0 else centroids[i] + Vector3.UP
 		var clip_n: Vector3  = (other_c - centroids[i]).normalized()
-		# Tight clip: scan every voxel in this island and find the maximum projection
-		# onto clip_n. This is tighter than the AABB face for diagonal/L cuts where
-		# both islands' AABBs overlap in the clip_n direction.
+		# Shared clip plane at midpoint of the inter-island voxel gap. Both fragments
+		# clip to exactly complementary half-spaces, so the overlap zone (the source
+		# of ghost geometry) is eliminated even with only 1 voxel of separation.
 		var half_cell_ext: float = (absf(cell.x * clip_n.x) + absf(cell.y * clip_n.y) + absf(cell.z * clip_n.z)) * 0.5
-		var max_proj: float = -INF
-		for raw2: int in islands[i]:
-			var vx2: int = raw2 % _dims.x
-			var vy2: int = floori(float(raw2) / _dims.x) % _dims.y
-			var vz2: int = floori(float(raw2) / (_dims.x * _dims.y))
-			var vp: Vector3 = go + Vector3((vx2 + 0.5) * cell.x, (vy2 + 0.5) * cell.y, (vz2 + 0.5) * cell.z)
-			max_proj = maxf(max_proj, vp.dot(clip_n))
-		var clip_d: float    = max_proj + half_cell_ext
+		var max_proj_i: float  = -INF
+		var min_proj_oth: float = INF
+		for vox_idx: int in range(labels.size()):
+			var lab: int = labels[vox_idx]
+			if lab < 0 or islands[lab].size() < min_vox: continue
+			var vx2: int = vox_idx % _dims.x
+			var vy2: int = floori(float(vox_idx) / _dims.x) % _dims.y
+			var vz2: int = floori(float(vox_idx) / (_dims.x * _dims.y))
+			var proj: float = (go + Vector3((vx2 + 0.5) * cell.x, (vy2 + 0.5) * cell.y, (vz2 + 0.5) * cell.z)).dot(clip_n)
+			if lab == i: max_proj_i = maxf(max_proj_i, proj)
+			else: min_proj_oth = minf(min_proj_oth, proj)
+		var clip_d: float = (max_proj_i + min_proj_oth) * 0.5 if min_proj_oth > max_proj_i else max_proj_i + half_cell_ext
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
 		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_d)
