@@ -212,7 +212,10 @@ func _check_connectivity() -> void:
 		var clip_d: float = (max_proj_i + min_proj_oth) * 0.5 if min_proj_oth > max_proj_i else max_proj_i + half_cell_ext
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_d)
+		# Use centroid (not AABB center) so both fragments' cut faces map to the
+		# same world position: centroids lie on the clip_n axis by construction,
+		# making their perpendicular displacement zero and the cut faces coincident.
+		_spawn_fragment(centroids[i], aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_d)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,

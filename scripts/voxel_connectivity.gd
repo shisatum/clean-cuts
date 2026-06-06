@@ -78,7 +78,10 @@ static func island_bounds(island: PackedInt32Array, dims: Vector3i) -> Dictionar
 	var mn := Vector3i(dims.x, dims.y, dims.z)
 	var mx := Vector3i(0, 0, 0)
 	for raw: int in island:
-		var v := Vector3i(raw % dims.x, (raw / dims.x) % dims.y, raw / (dims.x * dims.y))
+		var vxi: int = raw % dims.x
+		var vyi: int = floori(float(raw) / dims.x) % dims.y
+		var vzi: int = floori(float(raw) / (dims.x * dims.y))
+		var v := Vector3i(vxi, vyi, vzi)
 		mn = Vector3i(min(mn.x, v.x), min(mn.y, v.y), min(mn.z, v.z))
 		mx = Vector3i(max(mx.x, v.x), max(mx.y, v.y), max(mx.z, v.z))
 	return {mn = mn, mx = mx}
