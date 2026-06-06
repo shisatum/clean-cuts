@@ -6,12 +6,18 @@
 [sub_resource type="StandardMaterial3D" id="MatEnemy"]
 albedo_color = Color(0.75, 0.25, 0.2, 1)
 
+[sub_resource type="BoxShape3D" id="BodyShape"]
+size = Vector3(0.5, 1.8, 0.5)
+
 [node name="Enemy" type="RigidBody3D"]
 collision_layer = 1
 collision_mask = 1
 script = ExtResource("1")
 material_data = ExtResource("2")
 body_material = SubResource("MatEnemy")
+
+[node name="BodyCollision" type="CollisionShape3D" parent="Enemy"]
+shape = SubResource("BodyShape")
 
 [node name="Csg" type="CSGCombiner3D" parent="Enemy"]
 

@@ -50,11 +50,18 @@ func setup(size: Vector3, mat: MaterialData, body_mat: Material,
 	call_deferred("_rebuild_collision")
 
 func _init_colliders() -> void:
-	var col       := CollisionShape3D.new()
-	var box_shape := BoxShape3D.new()
-	box_shape.size = body_size
-	col.shape = box_shape
-	add_child(col)
+	# Scene-placed bodies (enemies, future scene objects) should define a
+	# CollisionShape3D directly in the scene file so Jolt registers it at
+	# body-creation time rather than deferred. Dynamically spawned fragments
+	# have no scene shape, so we create one here.
+	var has_phys_shape: bool = get_children().any(
+		func(c: Node) -> bool: return c is CollisionShape3D)
+	if not has_phys_shape:
+		var col       := CollisionShape3D.new()
+		var box_shape := BoxShape3D.new()
+		box_shape.size = body_size
+		col.shape = box_shape
+		add_child(col)
 	var ray_area := Area3D.new()
 	ray_area.collision_layer = 2
 	ray_area.collision_mask  = 0
