@@ -1,0 +1,21 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tests/test_enemy_spawn.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/enemy_spawner.gd" id="2"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(60.0, 0.4, 60.0)
+
+[node name="TestRoot" type="Node"]
+script = ExtResource("1")
+
+[node name="Floor" type="StaticBody3D" parent="."]
+collision_layer = 1
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
+
+[node name="FloorCol" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="EnemySpawner" type="Node" parent="."]
+script = ExtResource("2")
+spawn_radius = 5.0

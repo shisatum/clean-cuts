@@ -47,7 +47,11 @@ func _die(mass_fraction: float) -> void:
 	_dead = true
 	axis_lock_angular_x = false
 	axis_lock_angular_z = false
-	# Small random torque so the body tips in an unpredictable direction.
 	var tip := Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0))
 	apply_torque_impulse(tip.normalized() * 4.0)
 	print("[ENEMY] died — %.0f%% mass remaining" % [mass_fraction * 100.0])
+	get_tree().create_timer(3.0).timeout.connect(_cleanup)
+
+func _cleanup() -> void:
+	if is_inside_tree():
+		queue_free()

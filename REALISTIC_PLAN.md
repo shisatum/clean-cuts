@@ -97,10 +97,17 @@ Each milestone must be *fun or stable* before you start the next. If a milestone
 - **M4 — Procedural fracture. ✅** Voxel flood-fill (BFS, 6-face, ~900 voxels/object). After each hole, disconnected islands become `DestructibleBody` (RigidBody3D, carries own hole history, fully recursive). Fragment shape built from greedy voxel decomposition (`decompose_island`) — no AABB overflow. `build_grid_with_shapes` prevents ghost-solid corner voxels on diagonal/irregular fragments. Dust (< 8% volume) deleted silently. Spin set proportional to COM offset.
 
 - **Pre-M5 fixes. ✅**
-  1. *(deferred)* Occasional small gray CSG artifacts at complex cut boundaries. Cap hole count per object if it becomes a problem during M5 work.
-  2. *(accepted)* Staircase on diagonal fragment edges (~5 cm voxel cells). Reducing it meaningfully on thin planks would require ~4× more voxels; accepted as the destruction aesthetic for now.
+  1. *(deferred)* Occasional small gray CSG artifacts at complex cut boundaries. Cap hole count per object if it becomes a problem during M5 work. **Note:** distinct from the fracture-face staircase issue (see Deferred Visual Polish below) — this is a Godot CSG rendering glitch (Z-fighting / degenerate polys where CSGBox3D nodes intersect at complex angles), not a voxel quantization problem.
+  2. *(accepted for now — see Deferred Visual Polish below)* Staircase on fragment edges at fracture boundaries (~5 cm voxel cells). Reducing it meaningfully would require ~4× more voxels globally; parked as the destruction aesthetic until dedicated polish work.
   3. ✅ Deleted `sever_threshold` from `MaterialData` and both `.tres` resources — unused dead field removed.
   4. ✅ Unified `DestructibleObject` + `FragmentObject` into `DestructibleBody extends RigidBody3D`. Frozen planks use `freeze = true`; spawned fragments unfrozen. CSG always lives in a `Csg` child at origin so `cyl.position` is consistently body-local in both modes. Old scripts deleted; `main.tscn` updated.
+
+- **Deferred Visual Polish — Fracture Face Aesthetics (post-M5)**
+  After a fracture, the cut face of each fragment shows jagged voxel staircase edges where the BFS island boundary runs through the voxel grid. The CSG cylinder hole itself renders cleanly; the staircase is the *solid material around it*, where the island boundary doesn't align with any real geometric surface. Three implementation options (in ascending cost):
+  1. **Cap plane subtraction** *(cheapest)*: At `_spawn_fragment` time, detect which face of the fragment's AABB is nearest the fracture boundary and add a 1-voxel-deep `CSGBox3D` subtraction that shaves that face flat. Staircase is hidden; the result is a crisp flat break face. Fits the clean-cuts aesthetic well but does not look like a rough fracture.
+  2. **Increase local voxel density**: Not practical without a large global voxel count increase that hurts performance. Ruled out.
+  3. **Plane-split for the visual face**: Voxels still drive the connectivity check, but the visible fracture face is a CSG half-space (large thin `CSGBox3D` subtraction aligned to the approximate split plane). Cleanest result; more complex to wire into `_spawn_fragment`. The split plane can be approximated from the vector between the two islands' centers of mass.
+  **Recommendation when revisiting:** try Option 1 first (small change to `_spawn_fragment` in `destructible_body.gd`); escalate to Option 3 only if the flat face looks wrong in practice.
 
 - **M5 — Enemies. 🔧 in progress**
   - Step 1 (current): single-part box enemy. `Enemy extends DestructibleBody`. Patrol AI via `_integrate_forces`; angular X/Z axes locked so it stays upright, unlocked on death. `DestructibleBody` emits `mass_changed(solid_count)` after every connectivity check; enemy connects to it and calls `_die()` when `solid_count / initial_voxels <= (1 - death_threshold)`. Default threshold: 50%.
