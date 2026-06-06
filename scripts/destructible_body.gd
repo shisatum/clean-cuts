@@ -198,20 +198,6 @@ func _check_connectivity() -> void:
 		var sz: Vector3      = aabb.size
 		var boxes: Array[Dictionary] = VoxelConnectivity.decompose_island(labels, i, _dims)
 		_spawn_fragment(ac, sz, body_material, boxes)
-	# Wake any sleeping bodies that were resting on this one before it disappears.
-	# Jolt does not automatically wake sleeping dynamic bodies when a static (frozen)
-	# body is removed — they stay floating where their support used to be.
-	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
-	var wake_query := PhysicsShapeQueryParameters3D.new()
-	var wake_box := BoxShape3D.new()
-	wake_box.size = body_size * 1.1
-	wake_query.shape          = wake_box
-	wake_query.transform      = global_transform
-	wake_query.collision_mask = 1
-	wake_query.exclude        = [get_rid()]
-	for contact: Dictionary in space.intersect_shape(wake_query, 32):
-		if contact.collider is RigidBody3D and (contact.collider as RigidBody3D).sleeping:
-			(contact.collider as RigidBody3D).sleeping = false
 	# Remove this body from all collision layers immediately so Jolt stops
 	# testing it against the freshly spawned fragments before queue_free() lands.
 	collision_layer = 0
@@ -297,6 +283,21 @@ func _on_sleeping_state_changed() -> void:
 		collision_rebuilt.emit(_phys_col)
 		freeze_mode = FREEZE_MODE_STATIC
 		freeze = true
+	elif not sleeping:
+		_wake_nearby_sleeping()
+
+func _wake_nearby_sleeping() -> void:
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var query := PhysicsShapeQueryParameters3D.new()
+	var box := BoxShape3D.new()
+	box.size = body_size * 1.1
+	query.shape          = box
+	query.transform      = global_transform
+	query.collision_mask = 1
+	query.exclude        = [get_rid()]
+	for contact: Dictionary in space.intersect_shape(query, 32):
+		if contact.collider is RigidBody3D and (contact.collider as RigidBody3D).sleeping:
+			(contact.collider as RigidBody3D).sleeping = false
 
 # Reverts to compound BoxShape3D nodes and unfreezes so the body can simulate.
 func _restore_box_collision() -> void:
