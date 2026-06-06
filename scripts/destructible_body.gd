@@ -67,6 +67,11 @@ func _init_colliders() -> void:
 	ray_area.collision_mask  = 0
 	add_child(ray_area)
 	_ray_col = CollisionShape3D.new()
+	# Seed with a box so raycasts land immediately. _rebuild_collision() will
+	# replace this with the accurate CSG trimesh once the mesh has been cooked.
+	var initial_box := BoxShape3D.new()
+	initial_box.size = body_size
+	_ray_col.shape = initial_box
 	ray_area.add_child(_ray_col)
 
 # Adds one solid box to build up a fragment's base shape voxel-by-voxel.
