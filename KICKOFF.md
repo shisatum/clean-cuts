@@ -30,14 +30,16 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 **Current branch:** `m5-enemies`
 
 **M5 in progress — Step 1: single-part enemy:**
-- `Enemy extends DestructibleBody` (`scripts/enemy.gd`). Patrol AI in `_integrate_forces`. Dies when voxel mass drops below `death_threshold` (default 50%).
+- `Enemy extends DestructibleBody` (`scripts/enemy.gd`). Chase AI in `_integrate_forces` (XZ toward camera). Dies when voxel mass drops below `death_threshold` (default 50%).
 - `DestructibleBody` emits `mass_changed(solid_count: int)` after each connectivity check — enemy connects to it.
 - Enemy scene: `scenes/enemy.tscn` — reddish 0.5×1.8×0.5m box, wood material.
-- One enemy placed in `main.tscn` at (0, 0.9, 3) for testing.
-- **Raycast collision:** Area3D (layer 2) with trimesh shape — `_rebuild_collision()` bakes the CSG mesh after each hole so rays accurately pass through existing damage. Scene-defined `BodyCollision` (BoxShape3D) handles physics separately. `fly_camera.gd` impulse block handles both Area3D and direct RigidBody3D collider hits.
-- **Scene file lesson:** In `.tscn` files, direct children of the root node MUST use `parent="."`, NOT `parent="RootName"`. Wrong paths silently orphan the child nodes at instantiation — no error in-editor, just missing children at runtime causing a cascade of null-reference early returns.
-- **Headless test:** `tests/test_raycast.gd` verifies Area3D presence, layer, and raycast hit path for both enemy and PlankWood. Run with `Godot_v4.6.3-stable_win64_console.exe --headless --path <proj> 2>&1`.
-- **Done when:** enemy patrols, takes persistent holes, tips over at 50% mass loss, 60 fps.
+- `EnemySpawner` node in `main.tscn` (`scripts/enemy_spawner.gd`): spawns one enemy at a random angle around the camera (radius 8m, floor expanded to 60×60); respawns 2s after each death. Uses `call_deferred("_do_spawn")` to avoid parent-busy error.
+- **Machine gun:** right-click held fires at 80ms interval via `Timer` in `fly_camera.gd`.
+- **Performance:** three fixes in `destructible_body.gd` + `voxel_connectivity.gd` — (1) debounce flags prevent frame stacking, (2) incremental `_voxels` cache + `carve_holes()` keeps voxel cost O(V) per shot, (3) `_bake_csg()` collapses CSG tree to `CSGMesh3D` after 20 holes (`CSG_BAKE_THRESHOLD`).
+- **Raycast collision:** Area3D (layer 2) with trimesh shape — `_rebuild_collision()` bakes the CSG mesh after each hole so rays accurately pass through existing damage. Scene-defined `BodyCollision` (BoxShape3D) handles physics separately.
+- **Scene file lesson:** In `.tscn` files, direct children of the root node MUST use `parent="."`, NOT `parent="RootName"`. Wrong paths silently orphan the child nodes at instantiation — no error in-editor, just missing children at runtime.
+- **Headless tests:** `tests/test_raycast.gd` verifies Area3D/raycast architecture; `tests/test_enemy_spawn.gd` verifies EnemySpawner places an enemy on the floor. Run with `Godot_v4.6.3-stable_win64_console.exe --headless --path <proj> res://tests/<scene>.tscn`.
+- **Done when:** enemy chases player, takes persistent holes, tips over at 50% mass loss, 60 fps even with many holes per object.
 - Step 2 (after Step 1 confirmed): multi-part enemies (torso + limbs).
 
 **M6 and beyond:**

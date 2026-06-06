@@ -1,19 +1,19 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://ckx5sj7emd45a"]
 
-[ext_resource type="Script" path="res://scripts/fly_camera.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/destructible_body.gd" id="2"]
-[ext_resource type="Script" path="res://scripts/enemy_spawner.gd" id="6"]
+[ext_resource type="Script" uid="uid://i5gjsqmg68s1" path="res://scripts/fly_camera.gd" id="1"]
+[ext_resource type="Script" uid="uid://noqd7n55nhsw" path="res://scripts/destructible_body.gd" id="2"]
 [ext_resource type="Resource" path="res://resources/wood.tres" id="3"]
 [ext_resource type="Resource" path="res://resources/steel.tres" id="4"]
+[ext_resource type="Script" uid="uid://bjmlhmm5nxaj5" path="res://scripts/enemy_spawner.gd" id="6"]
+
+[sub_resource type="BoxMesh" id="MeshFloor"]
+size = Vector3(60, 0.4, 60)
 
 [sub_resource type="StandardMaterial3D" id="MatFloor"]
 albedo_color = Color(0.38, 0.38, 0.38, 1)
 
-[sub_resource type="BoxMesh" id="MeshFloor"]
-size = Vector3(60.0, 0.4, 60.0)
-
 [sub_resource type="BoxShape3D" id="ShapeFloor"]
-size = Vector3(60.0, 0.4, 60.0)
+size = Vector3(60, 0.4, 60)
 
 [sub_resource type="StandardMaterial3D" id="MatWood"]
 albedo_color = Color(0.6, 0.38, 0.18, 1)
@@ -23,64 +23,60 @@ albedo_color = Color(0.6, 0.65, 0.7, 1)
 metallic = 0.8
 roughness = 0.3
 
-[node name="Main" type="Node3D"]
+[node name="Main" type="Node3D" unique_id=1785847265]
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1767147017]
 transform = Transform3D(1, 0, 0, 0, 0.7071, 0.7071, 0, -0.7071, 0.7071, 0, 10, 0)
 light_energy = 1.2
 shadow_enabled = true
 
-[node name="Floor" type="StaticBody3D" parent="."]
+[node name="Floor" type="StaticBody3D" parent="." unique_id=2104887154]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
 collision_layer = 3
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor" unique_id=216237495]
 mesh = SubResource("MeshFloor")
 surface_material_override/0 = SubResource("MatFloor")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor" unique_id=1394711907]
 shape = SubResource("ShapeFloor")
 
-[node name="PlankWood" type="RigidBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.0, 0.4, 0)
-collision_layer = 1
-collision_mask = 1
+[node name="PlankWood" type="RigidBody3D" parent="." unique_id=2077459707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0.4, 0)
 freeze = true
 script = ExtResource("2")
 material_data = ExtResource("3")
 body_material = SubResource("MatWood")
 
-[node name="Csg" type="CSGCombiner3D" parent="PlankWood"]
+[node name="Csg" type="CSGCombiner3D" parent="PlankWood" unique_id=433106192]
 
-[node name="Body" type="CSGBox3D" parent="PlankWood/Csg"]
+[node name="Body" type="CSGBox3D" parent="PlankWood/Csg" unique_id=843847652]
 size = Vector3(0.15, 0.8, 2.5)
 material = SubResource("MatWood")
 
-[node name="PlankSteel" type="RigidBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 0.4, 0)
-collision_layer = 1
-collision_mask = 1
+[node name="PlankSteel" type="RigidBody3D" parent="." unique_id=2022647671]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0.4, 0)
 freeze = true
 script = ExtResource("2")
 material_data = ExtResource("4")
 body_material = SubResource("MatSteel")
 
-[node name="Csg" type="CSGCombiner3D" parent="PlankSteel"]
+[node name="Csg" type="CSGCombiner3D" parent="PlankSteel" unique_id=1458480581]
 
-[node name="Body" type="CSGBox3D" parent="PlankSteel/Csg"]
+[node name="Body" type="CSGBox3D" parent="PlankSteel/Csg" unique_id=522179419]
 size = Vector3(0.15, 0.8, 2.5)
 material = SubResource("MatSteel")
 
-[node name="EnemySpawner" type="Node" parent="."]
+[node name="EnemySpawner" type="Node" parent="." unique_id=1211746857]
 script = ExtResource("6")
 
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.9659, 0.2588, 0, -0.2588, 0.9659, 0, 2.0, 8.0)
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1504103630]
+transform = Transform3D(1, 0, 0, 0, 0.9659, 0.2588, 0, -0.2588, 0.9659, 0, 2, 8)
 script = ExtResource("1")
 
-[node name="HUD" type="CanvasLayer" parent="."]
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1818799710]
 
-[node name="CenterContainer" type="CenterContainer" parent="HUD"]
+[node name="CenterContainer" type="CenterContainer" parent="HUD" unique_id=1373639222]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -88,25 +84,24 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Crosshair" type="ColorRect" parent="HUD/CenterContainer"]
+[node name="Crosshair" type="ColorRect" parent="HUD/CenterContainer" unique_id=2088148862]
 custom_minimum_size = Vector2(6, 6)
 layout_mode = 2
 color = Color(1, 1, 1, 0.85)
 
-[node name="EnergyPanel" type="VBoxContainer" parent="HUD"]
+[node name="EnergyPanel" type="VBoxContainer" parent="HUD" unique_id=1332855083]
 offset_left = 10.0
 offset_top = 10.0
 offset_right = 230.0
 offset_bottom = 58.0
 
-[node name="EnergyLabel" type="Label" parent="HUD/EnergyPanel"]
+[node name="EnergyLabel" type="Label" parent="HUD/EnergyPanel" unique_id=1364156206]
 layout_mode = 2
 text = "Shot Energy: 60"
 
-[node name="EnergySlider" type="HSlider" parent="HUD/EnergyPanel"]
-layout_mode = 2
+[node name="EnergySlider" type="HSlider" parent="HUD/EnergyPanel" unique_id=871769746]
 custom_minimum_size = Vector2(220, 0)
-min_value = 0.0
+layout_mode = 2
 max_value = 2500.0
 step = 50.0
-value = 60.0
+value = 50.0
