@@ -101,9 +101,11 @@ func _fire() -> void:
 		hit.normal.snapped(Vector3.ONE * 0.001),
 	])
 
-	# All DestructibleBody nodes expose an Area3D (layer 2); get_parent() returns the body.
+	# DestructibleBody nodes are on collision layer 2; the collider is the body itself.
 	var rb: RigidBody3D = null
-	if hit.collider is Area3D and hit.collider.get_parent() is RigidBody3D:
+	if hit.collider is RigidBody3D:
+		rb = hit.collider as RigidBody3D
+	elif hit.collider is Area3D and hit.collider.get_parent() is RigidBody3D:
 		rb = hit.collider.get_parent() as RigidBody3D
 	if rb:
 		var mag: float = clamp(shot_energy * 0.002, 0.5, 6.0)

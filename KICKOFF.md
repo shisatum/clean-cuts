@@ -34,6 +34,7 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 - `DestructibleBody` emits `mass_changed(solid_count: int)` after each connectivity check — enemy connects to it.
 - Enemy scene: `scenes/enemy.tscn` — reddish 0.5×1.8×0.5m box, wood material.
 - One enemy placed in `main.tscn` at (0, 0.9, 3) for testing.
+- **Raycast collision:** `_init_colliders()` calls `collision_layer |= 2` on the RigidBody3D itself. Area3D was attempted but Jolt doesn't reliably register Area3D shapes for dynamic-body children; direct body detection on layer 2 is used instead.
 - **Done when:** enemy patrols, takes persistent holes, tips over at 50% mass loss, 60 fps.
 - Step 2 (after Step 1 confirmed): multi-part enemies (torso + limbs).
 

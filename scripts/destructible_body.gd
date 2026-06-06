@@ -13,7 +13,6 @@ const MIN_FRAG_FRACTION := 0.08
 signal mass_changed(solid_count: int)
 
 var _csg: CSGCombiner3D
-var _ray_col: CollisionShape3D
 var _last_hit_dir: Vector3
 var _severing := false
 
@@ -29,7 +28,6 @@ func _ready() -> void:
 		if body_material == null:
 			body_material = (body_nd as CSGBox3D).material
 	_init_colliders()
-	call_deferred("_rebuild_collision")
 
 # Called immediately after add_child() for dynamically spawned fragments.
 func setup(size: Vector3, mat: MaterialData, body_mat: Material,
@@ -47,13 +45,17 @@ func setup(size: Vector3, mat: MaterialData, body_mat: Material,
 		box.material = body_mat
 		_csg.add_child(box)
 	_init_colliders()
-	call_deferred("_rebuild_collision")
 
 func _init_colliders() -> void:
-	# Scene-placed bodies (enemies, future scene objects) should define a
-	# CollisionShape3D directly in the scene file so Jolt registers it at
-	# body-creation time rather than deferred. Dynamically spawned fragments
-	# have no scene shape, so we create one here.
+	# Join layer 2 so raycasts (collision_mask = 2) detect this body directly
+	# via its own physics shape. A child Area3D was tried first, but Jolt does
+	# not reliably register Area3D shapes for dynamic-body children — it works
+	# for frozen/static parents but misses for moving bodies like enemies and
+	# fragments. Using the RigidBody3D itself on layer 2 is simpler and stable.
+	collision_layer = collision_layer | 2
+	# Scene-placed bodies should define CollisionShape3D in the scene file so
+	# Jolt registers it at body-creation time (not deferred). Dynamically
+	# spawned fragments have no scene shape, so we create one here.
 	var has_phys_shape: bool = get_children().any(
 		func(c: Node) -> bool: return c is CollisionShape3D)
 	if not has_phys_shape:
@@ -62,19 +64,6 @@ func _init_colliders() -> void:
 		box_shape.size = body_size
 		col.shape = box_shape
 		add_child(col)
-	# Build the Area3D complete — shape added as child BEFORE the area enters
-	# the tree. Jolt registers an area's shapes at tree-entry time; adding a
-	# shape after the area is already in the tree is deferred by one physics
-	# step, causing the first frame's raycasts to miss.
-	_ray_col = CollisionShape3D.new()
-	var initial_box := BoxShape3D.new()
-	initial_box.size = body_size
-	_ray_col.shape = initial_box
-	var ray_area := Area3D.new()
-	ray_area.collision_layer = 2
-	ray_area.collision_mask  = 0
-	ray_area.add_child(_ray_col)  # shape in first
-	add_child(ray_area)           # then enter tree complete
 
 # Adds one solid box to build up a fragment's base shape voxel-by-voxel.
 func add_body_box(local_pos: Vector3, sz: Vector3) -> void:
@@ -108,7 +97,6 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	_csg.add_child(cyl)
 	_align_to_direction(cyl, global_hit_pos, direction)
 	call_deferred("_check_connectivity")
-	call_deferred("_rebuild_collision")
 
 func _get_holes() -> Array:
 	return _csg.get_children().filter(
@@ -193,15 +181,6 @@ func _hole_in_island(body_local_pos: Vector3, island_label: int,
 				if labels[nx + ny * dims.x + nz * dims.x * dims.y] == island_label:
 					return true
 	return false
-
-func _rebuild_collision() -> void:
-	if not is_inside_tree() or not _csg:
-		return
-	var meshes: Array = _csg.get_meshes()
-	if meshes.size() < 2 or not (meshes[1] is ArrayMesh):
-		return
-	if _ray_col:
-		_ray_col.shape = (meshes[1] as ArrayMesh).create_trimesh_shape()
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()

@@ -104,6 +104,7 @@ Each milestone must be *fun or stable* before you start the next. If a milestone
 
 - **M5 — Enemies. 🔧 in progress**
   - Step 1 (current): single-part box enemy. `Enemy extends DestructibleBody`. Patrol AI via `_integrate_forces`; angular X/Z axes locked so it stays upright, unlocked on death. `DestructibleBody` emits `mass_changed(solid_count)` after every connectivity check; enemy connects to it and calls `_die()` when `solid_count / initial_voxels <= (1 - death_threshold)`. Default threshold: 50%.
+  - **Collision architecture** (Jolt lesson): Area3D as a child of a dynamic RigidBody3D is NOT reliably registered by Jolt for raycasts — works for frozen/static parents, fails silently for moving ones. Fix: `_init_colliders()` does `collision_layer |= 2` on the RigidBody3D itself. Camera raycast (mask=2, collide_with_bodies=true) hits the body's own BoxShape3D. Trimesh accuracy (rays pass through holes) is deferred; box shapes are acceptable for prototype.
   - Step 2 (next): multi-part enemies (torso + limbs), once single-part is confirmed fun.
   - **Definition of done for Step 1:** Enemy patrols back and forth. Shooting it carves persistent holes. After enough damage it stops moving and tips over. Fragments still fly if it severs. 60 fps throughout.
 - **M6 — Physical projectiles (optional).** *Now* add launched rigid bodies, if you still want them. Re-introduce ballistic handling deliberately and in isolation, not as a foundation.
