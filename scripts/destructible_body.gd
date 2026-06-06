@@ -21,6 +21,11 @@ var _csg: CSGCombiner3D
 var _ray_col: CollisionShape3D
 var _last_hit_dir: Vector3
 var _severing := false
+var _connectivity_pending: bool = false
+var _collision_pending: bool    = false
+var _voxels: PackedByteArray    = PackedByteArray()
+var _dims: Vector3i             = Vector3i.ZERO
+var _carved_count: int          = 0
 
 # Called automatically for scene-placed nodes (planks).
 func _ready() -> void:
@@ -34,6 +39,7 @@ func _ready() -> void:
 		if body_material == null:
 			body_material = (body_nd as CSGBox3D).material
 	_init_colliders()
+	_init_voxels()
 	call_deferred("_rebuild_collision")
 
 # Called immediately after add_child() for dynamically spawned fragments.
@@ -112,8 +118,12 @@ func apply_hole(global_hit_pos: Vector3, direction: Vector3, energy: float) -> v
 	cyl.operation = CSGShape3D.OPERATION_SUBTRACTION
 	_csg.add_child(cyl)
 	_align_to_direction(cyl, global_hit_pos, direction)
-	call_deferred("_check_connectivity")
-	call_deferred("_rebuild_collision")
+	if not _connectivity_pending:
+		_connectivity_pending = true
+		call_deferred("_check_connectivity")
+	if not _collision_pending:
+		_collision_pending = true
+		call_deferred("_rebuild_collision")
 
 func _get_holes() -> Array:
 	return _csg.get_children().filter(
@@ -126,35 +136,37 @@ func _get_body_boxes() -> Array:
 	return _csg.get_children().filter(func(c: Node) -> bool: return c is CSGBox3D)
 
 func _check_connectivity() -> void:
+	_connectivity_pending = false
 	if _severing or not is_inside_tree():
 		return
-	var holes: Array      = _get_holes()
-	var dims: Vector3i    = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
-	var body_boxes: Array = _get_body_boxes()
-	var voxels: PackedByteArray = VoxelConnectivity.build_grid_with_shapes(
-		body_size, dims, body_boxes, holes) if body_boxes.size() > 1 \
-		else VoxelConnectivity.build_grid(body_size, dims, holes)
-	mass_changed.emit(voxels.count(1))
-	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(voxels, dims)
+	if _voxels.is_empty():
+		_init_voxels()
+	var holes: Array     = _get_holes()
+	var new_holes: Array = holes.slice(_carved_count)
+	if new_holes.size() > 0:
+		VoxelConnectivity.carve_holes(_voxels, body_size, _dims, new_holes)
+		_carved_count = holes.size()
+	mass_changed.emit(_voxels.count(1))
+	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(_voxels, _dims)
 	if islands.size() < 2:
 		return
 	_severing = true
 
 	var labels := PackedInt32Array()
-	labels.resize(voxels.size())
+	labels.resize(_voxels.size())
 	labels.fill(-1)
 	for i: int in range(islands.size()):
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	var min_vox: int   = int(dims.x * dims.y * dims.z * min_frag_fraction)
+	var min_vox: int   = int(_dims.x * _dims.y * _dims.z * min_frag_fraction)
 	var n_islands: int = islands.size()
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
-		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], dims)
-		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, dims, n_islands)
+		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
+		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, n_islands)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
@@ -177,6 +189,7 @@ func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 				break
 		if in_this or (not in_other):
 			frag.add_hole_from_transform(cyl.global_transform, cyl.radius, cyl.height)
+	frag._init_voxels()
 	var ang: Vector3 = global_transform.basis * Vector3(lc.z, 0.0, -lc.x).normalized() * 1.5
 	frag.angular_velocity = ang
 	frag.linear_velocity  = _last_hit_dir * 0.5
@@ -199,7 +212,19 @@ func _hole_in_island(body_local_pos: Vector3, island_label: int,
 					return true
 	return false
 
+func _init_voxels() -> void:
+	if _csg == null:
+		return
+	_dims = VoxelConnectivity.compute_dims(body_size, TARGET_VOXELS)
+	var body_boxes: Array = _get_body_boxes()
+	if body_boxes.size() > 1:
+		_voxels = VoxelConnectivity.build_grid_with_shapes(body_size, _dims, body_boxes, [])
+	else:
+		_voxels = VoxelConnectivity.build_grid(body_size, _dims, [])
+	_carved_count = 0
+
 func _rebuild_collision() -> void:
+	_collision_pending = false
 	if not is_inside_tree() or not _csg:
 		return
 	var meshes: Array = _csg.get_meshes()

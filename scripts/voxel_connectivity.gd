@@ -189,6 +189,31 @@ static func decompose_island(labels: PackedInt32Array, island_label: int,
 				boxes.append({mn = Vector3i(xi, yi, zi), mx = Vector3i(ex, ey, ez)})
 	return boxes
 
+# Carves holes into an existing voxel array in-place without reinitialising it.
+# Used for incremental updates — call with only the newly-added holes each time.
+static func carve_holes(voxels: PackedByteArray, body_size: Vector3,
+		dims: Vector3i, holes: Array) -> void:
+	var cell   := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	var origin := Vector3(-body_size.x * 0.5, -body_size.y * 0.5, -body_size.z * 0.5)
+	for hole: Node in holes:
+		if not (hole is CSGCylinder3D):
+			continue
+		var cyl := hole as CSGCylinder3D
+		var inv: Transform3D = cyl.transform.inverse()
+		var r: float  = cyl.radius
+		var hh: float = cyl.height * 0.5
+		for zi: int in range(dims.z):
+			for yi: int in range(dims.y):
+				for xi: int in range(dims.x):
+					var i: int = xi + yi * dims.x + zi * dims.x * dims.y
+					if voxels[i] == 0:
+						continue
+					var lp := origin + Vector3(
+						(xi + 0.5) * cell.x, (yi + 0.5) * cell.y, (zi + 0.5) * cell.z)
+					var p: Vector3 = inv * lp
+					if Vector2(p.x, p.z).length() <= r and absf(p.y) <= hh:
+						voxels[i] = 0
+
 static func _neighbors(v: Vector3i, dims: Vector3i) -> Array[Vector3i]:
 	var result: Array[Vector3i] = []
 	var offsets: Array[Vector3i] = [
