@@ -12,6 +12,8 @@ extends RigidBody3D
 @export_range(0.001, 0.15, 0.001) var min_frag_fraction: float = 0.02
 
 const TARGET_VOXELS := 900
+## Bake the CSG tree to a plain mesh after this many holes to keep re-bake cost constant.
+const CSG_BAKE_THRESHOLD := 20
 
 ## Emitted after each hole is applied with the number of solid voxels remaining.
 ## Connect to this signal to track mass loss (e.g. for enemy health thresholds).
@@ -230,8 +232,21 @@ func _rebuild_collision() -> void:
 	var meshes: Array = _csg.get_meshes()
 	if meshes.size() < 2 or not (meshes[1] is ArrayMesh):
 		return
+	var mesh: ArrayMesh = meshes[1] as ArrayMesh
 	if _ray_col:
-		_ray_col.shape = (meshes[1] as ArrayMesh).create_trimesh_shape()
+		_ray_col.shape = mesh.create_trimesh_shape()
+	if _get_holes().size() >= CSG_BAKE_THRESHOLD:
+		_bake_csg(mesh)
+
+func _bake_csg(baked: ArrayMesh) -> void:
+	for child: Node in _csg.get_children():
+		_csg.remove_child(child)
+		child.queue_free()
+	var body := CSGMesh3D.new()
+	body.mesh     = baked
+	body.material = body_material
+	_csg.add_child(body)
+	_carved_count = 0
 
 func _align_to_direction(node: Node3D, gp: Vector3, direction: Vector3) -> void:
 	var y: Vector3   = direction.normalized()
