@@ -165,6 +165,14 @@ func _check_connectivity() -> void:
 		return
 	_severing = true
 
+	var centroids: Array[Vector3] = []
+	for isl: PackedInt32Array in islands:
+		var s := Vector3.ZERO
+		for raw: int in isl:
+			s += VoxelConnectivity.voxel_center(raw, _dims, body_size)
+		centroids.append(s / float(isl.size()))
+
+	# voxel index -> island index (carved/void voxels stay -1) for interface fits.
 	var labels := PackedInt32Array()
 	labels.resize(_voxels.size())
 	labels.fill(-1)
@@ -172,69 +180,85 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	var cell: Vector3   = Vector3(body_size.x / _dims.x, body_size.y / _dims.y, body_size.z / _dims.z)
-	var go: Vector3     = -body_size * 0.5
-	var centroids: Array[Vector3] = []
-	for isl: PackedInt32Array in islands:
-		var s := Vector3.ZERO
-		for raw: int in isl:
-			var vx: int = raw % _dims.x
-			var vy: int = floori(float(raw) / _dims.x) % _dims.y
-			var vz: int = floori(float(raw) / (_dims.x * _dims.y))
-			s += go + Vector3((vx + 0.5) * cell.x, (vy + 0.5) * cell.y, (vz + 0.5) * cell.z)
-		centroids.append(s / float(isl.size()))
-
 	var min_vox: int = int(_dims.x * _dims.y * _dims.z * min_frag_fraction)
+	var valid: Array[int] = []
 	for i: int in range(islands.size()):
-		if islands[i].size() < min_vox:
-			continue
-		# Clip-plane normal: from this island's centroid toward the mass-weighted
-		# centroid of all the others. Approximates the fracture surface (docs M5
-		# "Plane-split for the visual face", option 3).
-		var osum := Vector3.ZERO
-		var ocnt: int = 0
-		for j: int in range(islands.size()):
-			if j == i:
-				continue
-			osum += centroids[j] * float(islands[j].size())
-			ocnt += islands[j].size()
-		var other_c: Vector3 = osum / float(ocnt) if ocnt > 0 else centroids[i] + Vector3.UP
-		var clip_n: Vector3  = (other_c - centroids[i]).normalized()
-		# Plane offset = midpoint of the inter-island voxel gap along clip_n. Both
-		# fragments clip to exactly complementary half-spaces, so they tile the
-		# original with no overlap (no ghost geometry) and meet at one flat face.
-		var half_cell_ext: float = (absf(cell.x * clip_n.x) + absf(cell.y * clip_n.y) + absf(cell.z * clip_n.z)) * 0.5
-		var max_proj_i: float   = -INF
-		var min_proj_oth: float =  INF
-		for vox_idx: int in range(labels.size()):
-			var lab: int = labels[vox_idx]
-			if lab < 0 or islands[lab].size() < min_vox:
-				continue
-			var vx2: int = vox_idx % _dims.x
-			var vy2: int = floori(float(vox_idx) / _dims.x) % _dims.y
-			var vz2: int = floori(float(vox_idx) / (_dims.x * _dims.y))
-			var proj: float = (go + Vector3((vx2 + 0.5) * cell.x, (vy2 + 0.5) * cell.y, (vz2 + 0.5) * cell.z)).dot(clip_n)
-			if lab == i: max_proj_i = maxf(max_proj_i, proj)
-			else: min_proj_oth = minf(min_proj_oth, proj)
-		# Guard against min_proj_oth == INF (no other VALID island — all dust):
-		# fall back to just past our own extent so the plane clips nothing.
-		var clip_d: float = (max_proj_i + min_proj_oth) * 0.5 if min_proj_oth < INF and min_proj_oth > max_proj_i else max_proj_i + half_cell_ext
+		if islands[i].size() >= min_vox:
+			valid.append(i)
+
+	for i: int in valid:
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, body_material, clip_n, clip_d)
+		var ac: Vector3      = aabb.center
+		var sz: Vector3      = aabb.size
+		# One clip plane PER other valid island (docs M5 "Plane-split for the
+		# visual face", option 3). A single averaged plane only works for a clean
+		# 2-piece split; with 3+ islands the interior pieces need bounding on every
+		# side. Each pair (i,j) shares one complementary plane, so the fragments
+		# tile with no overlap (no ghost geometry) for any island count.
+		var planes: Array[Dictionary] = []
+		for j: int in valid:
+			if j == i:
+				continue
+			var dir: Vector3 = centroids[j] - centroids[i]
+			if dir.length_squared() < 1e-9:
+				continue
+			var plane: Dictionary = _fracture_plane(labels, islands, centroids, i, j)
+			var n: Vector3 = plane.n
+			var d: float   = plane.d
+			# Skip planes that fall entirely beyond this fragment's AABB — they
+			# clip nothing (e.g. the plane toward an island on the far side of a
+			# nearer one). Avoids piling up no-op CSG subtractions per fragment.
+			var half_ext: float = (absf(sz.x * n.x) + absf(sz.y * n.y) + absf(sz.z * n.z)) * 0.5
+			if ac.dot(n) + half_ext <= d:
+				continue
+			planes.append({n = n, d = d})
+		_spawn_fragment(ac, sz, body_material, planes)
 	# Hide our CSG immediately so the original body's full mesh does not render
 	# for the one frame between queue_free() and the end-of-frame GC step.
 	if is_instance_valid(_csg):
 		_csg.visible = false
 	queue_free()
 
+# Body-local clip plane {n, d} separating islands i and j. The cut LINE is the
+# primary axis of the carved voxels on their shared interface; the cut NORMAL is
+# the island-separation direction (centroid difference) projected perpendicular
+# to that line — robust where a plain plane-fit fails, e.g. a through-hole void
+# that is thin along the plank's thickness as well as across the cut. The plane
+# passes through the interface centroid. Falls back to the centroid-gap midpoint
+# when the interface is too small. Symmetric in i/j (same interface set), so
+# fragments i and j get the identical plane with opposite normals -> exactly
+# complementary, no overlap.
+func _fracture_plane(labels: PackedInt32Array, islands: Array[PackedInt32Array],
+		centroids: Array[Vector3], i: int, j: int) -> Dictionary:
+	var toward: Vector3 = centroids[j] - centroids[i]
+	var pts: PackedVector3Array = VoxelConnectivity.interface_points(labels, _dims, body_size, i, j)
+	if pts.size() >= 4:
+		var c := Vector3.ZERO
+		for p: Vector3 in pts:
+			c += p
+		c /= float(pts.size())
+		var axis: Vector3 = VoxelConnectivity.primary_axis(pts)
+		if axis.length_squared() > 0.5:
+			var n: Vector3 = toward - axis * toward.dot(axis)
+			if n.length_squared() > 1e-6:
+				n = n.normalized()
+				if n.dot(toward) < 0.0:
+					n = -n
+				return {n = n, d = c.dot(n)}
+	# Fallback: axis from centroid difference, plane at the voxel-gap midpoint.
+	var nf: Vector3 = toward.normalized()
+	var ri: Vector2 = VoxelConnectivity.island_proj_range(islands[i], _dims, body_size, nf)
+	var rj: Vector2 = VoxelConnectivity.island_proj_range(islands[j], _dims, body_size, nf)
+	return {n = nf, d = (ri.y + rj.x) * 0.5}
+
 func _spawn_fragment(ac: Vector3, sz: Vector3, body_mat: Material,
-		clip_n: Vector3, clip_d: float) -> void:
+		planes: Array[Dictionary]) -> void:
 	# Smooth fragment, not voxel boxes: a single solid CSGBox3D the size of the
 	# island's AABB, minus the original hole cylinders, minus one oriented
-	# clip-plane box at the shared fracture plane. All inputs are clean CSG
-	# primitives (box/cylinders), so the boolean is reliable — unlike clipping a
-	# baked, non-manifold ArrayMesh, which silently produced ghost geometry.
+	# clip-plane box PER neighbouring island. All inputs are clean CSG primitives
+	# (box/cylinders), so the boolean is reliable — unlike clipping a baked,
+	# non-manifold ArrayMesh, which silently produced ghost geometry.
 	# Fragment origin sits at the AABB centre so the box (and the voxel grid
 	# derived from it) is centred on the node origin with no offset.
 	var frag := DestructibleBody.new()
@@ -246,20 +270,24 @@ func _spawn_fragment(ac: Vector3, sz: Vector3, body_mat: Material,
 		if _hole_overlaps_fragment(rec.lt.origin, ac, sz, rec.r):
 			# Replay at the hole's original world position via our current transform.
 			frag.add_hole_from_transform(global_transform * rec.lt, rec.r, rec.h)
-	# clip_d/clip_n are body-local; the fragment shares our basis, so the normal is
-	# unchanged and only the offset shifts (fragment origin = ac in body space).
-	var clip_d_local: float = clip_d - ac.dot(clip_n)
-	frag.add_clip_plane(clip_n, clip_d_local)
+	# Each plane's n/d is body-local; the fragment shares our basis, so the normal
+	# is unchanged and only the offset shifts (fragment origin = ac in body space).
 	frag._init_voxels()
-	# Keep the fragment's voxel grid consistent with the visual clip so later
-	# re-splits see the true (clipped) shape, not the full AABB box.
-	VoxelConnectivity.carve_halfspace(frag._voxels, sz, frag._dims, clip_n, clip_d_local)
-	# Spin proportional to AABB offset; push apart along the cut normal so the two
-	# halves visibly separate at the clean face.
+	for pl: Dictionary in planes:
+		var n: Vector3 = pl.n
+		var d_local: float = pl.d - ac.dot(n)
+		frag.add_clip_plane(n, d_local)
+		# Keep the fragment's voxel grid consistent with the visual clips so later
+		# re-splits see the true (clipped) shape, not the full AABB box.
+		VoxelConnectivity.carve_halfspace(frag._voxels, sz, frag._dims, n, d_local)
+	# Spin proportional to AABB offset; push outward from the body centre so the
+	# pieces visibly separate at their clean faces.
 	var ang_dir := Vector3(ac.z, 0.0, -ac.x)
 	var ang: Vector3 = global_transform.basis * (ang_dir.normalized() if ang_dir.length_squared() > 1e-6 else Vector3.RIGHT) * 1.5
 	frag.angular_velocity = ang
-	frag.linear_velocity  = _last_hit_dir * 0.5 - (global_transform.basis * clip_n) * 1.0
+	var out: Vector3 = global_transform.basis * ac
+	out = out.normalized() if out.length_squared() > 1e-6 else Vector3.UP
+	frag.linear_velocity  = _last_hit_dir * 0.5 + out * 0.8
 
 # Adds the oriented SUBTRACTION box that shaves a fragment's fracture face flat.
 # n/d are in this body's local space; the box's local Z axis is the plane normal
