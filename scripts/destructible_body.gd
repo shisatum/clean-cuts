@@ -161,50 +161,71 @@ func _check_connectivity() -> void:
 		for idx: int in islands[i]:
 			labels[idx] = i
 
-	# Bake the current CSG mesh once and share it across all fragments.
-	# Each fragment uses this mesh clipped to its AABB for a clean visual —
-	# no voxel-box decomposition, so existing holes stay cylinder-shaped.
+	# Bake the current CSG mesh once — shared across all fragments so they use
+	# the original clean geometry (cylinder holes intact) rather than voxel boxes.
 	var baked: ArrayMesh = null
 	var cm: Array = _csg.get_meshes()
 	if cm.size() >= 2 and cm[1] is ArrayMesh:
 		baked = cm[1] as ArrayMesh
 
+	# Compute each island's centroid (body-local) for clip-plane calculation.
+	var cell: Vector3   = Vector3(body_size.x / _dims.x, body_size.y / _dims.y, body_size.z / _dims.z)
+	var go: Vector3     = -body_size * 0.5
+	var centroids: Array[Vector3] = []
+	for isl: PackedInt32Array in islands:
+		var s := Vector3.ZERO
+		for raw: int in isl:
+			s += go + Vector3(((raw % _dims.x) + 0.5) * cell.x,
+				(((raw / _dims.x) % _dims.y) + 0.5) * cell.y,
+				((raw / (_dims.x * _dims.y)) + 0.5) * cell.z)
+		centroids.append(s / float(isl.size()))
+
 	var min_vox: int = int(_dims.x * _dims.y * _dims.z * min_frag_fraction)
 	for i: int in range(islands.size()):
 		if islands[i].size() < min_vox:
 			continue
+		# Clip plane: midpoint between this island's centroid and the mass-weighted
+		# centroid of all other islands, normal pointing toward the other side.
+		var osum := Vector3.ZERO
+		var ocnt: int = 0
+		for j: int in range(islands.size()):
+			if j == i:
+				continue
+			osum += centroids[j] * float(islands[j].size())
+			ocnt += islands[j].size()
+		var other_c: Vector3 = osum / float(ocnt) if ocnt > 0 else centroids[i] + Vector3.UP
+		var clip_n: Vector3  = (other_c - centroids[i]).normalized()
+		var clip_m: Vector3  = (centroids[i] + other_c) * 0.5
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
-		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked)
+		_spawn_fragment(aabb.center, aabb.size, holes, body_material, i, labels, _dims, baked, clip_n, clip_m)
 	queue_free()
 
 func _spawn_fragment(lc: Vector3, sz: Vector3, holes: Array, body_mat: Material,
 		island_idx: int, labels: PackedInt32Array, dims: Vector3i,
-		baked: ArrayMesh) -> void:
+		baked: ArrayMesh, clip_n: Vector3, clip_m: Vector3) -> void:
 	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
 	frag.global_transform = Transform3D(global_transform.basis, global_transform * lc)
 	if baked != null:
-		# Original mesh shifted into fragment-local space, then intersected with
-		# the exact island shape (union of voxel boxes inside a sub-combiner).
-		# Tighter than a plain AABB clip — prevents ghost geometry from the other
-		# island on diagonal or irregular splits.
+		# Original baked mesh shifted into fragment-local space, then clipped to
+		# this island's half-space via an oriented CSGBox3D. The clip plane sits at
+		# the midpoint between island centroids — clean flat fracture face, no ghost
+		# geometry, no voxel staircase.
 		var mesh_nd := CSGMesh3D.new()
 		mesh_nd.mesh     = baked
 		mesh_nd.material = body_mat
 		mesh_nd.position = -lc
 		frag._csg.add_child(mesh_nd)
-		var island_clip := CSGCombiner3D.new()
-		island_clip.operation = CSGShape3D.OPERATION_INTERSECTION
-		for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
-			var a: Dictionary = VoxelConnectivity.aabb_to_local(box.mn, box.mx, dims, body_size)
-			var b := CSGBox3D.new()
-			b.size     = a.size
-			b.position = a.center - lc
-			b.material = body_mat
-			island_clip.add_child(b)
-		frag._csg.add_child(island_clip)
+		var yref: Vector3 = Vector3.UP if absf(clip_n.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+		var xax: Vector3  = yref.cross(clip_n).normalized()
+		var yax: Vector3  = clip_n.cross(xax).normalized()
+		var clip := CSGBox3D.new()
+		clip.size      = Vector3(1000.0, 1000.0, 1000.0)
+		clip.operation = CSGShape3D.OPERATION_INTERSECTION
+		clip.transform = Transform3D(Basis(xax, yax, clip_n), clip_m - clip_n * 500.0 - lc)
+		frag._csg.add_child(clip)
 	else:
 		# Fallback (no mesh available): voxel decomposition + cylinder transfer.
 		for box: Dictionary in VoxelConnectivity.decompose_island(labels, island_idx, dims):
