@@ -16,11 +16,11 @@ script = ExtResource("1")
 material_data = ExtResource("2")
 body_material = SubResource("MatEnemy")
 
-[node name="BodyCollision" type="CollisionShape3D" parent="Enemy"]
+[node name="BodyCollision" type="CollisionShape3D" parent="."]
 shape = SubResource("BodyShape")
 
-[node name="Csg" type="CSGCombiner3D" parent="Enemy"]
+[node name="Csg" type="CSGCombiner3D" parent="."]
 
-[node name="Body" type="CSGBox3D" parent="Enemy/Csg"]
+[node name="Body" type="CSGBox3D" parent="Csg"]
 size = Vector3(0.5, 1.8, 0.5)
 material = SubResource("MatEnemy")
