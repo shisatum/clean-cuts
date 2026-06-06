@@ -34,7 +34,9 @@ A previous attempt lives at `D:\LOVE\code_projects\Godot\material-destruction-de
 - `DestructibleBody` emits `mass_changed(solid_count: int)` after each connectivity check — enemy connects to it.
 - Enemy scene: `scenes/enemy.tscn` — reddish 0.5×1.8×0.5m box, wood material.
 - One enemy placed in `main.tscn` at (0, 0.9, 3) for testing.
-- **Raycast collision:** `_init_colliders()` calls `collision_layer |= 2` on the RigidBody3D itself. Area3D was attempted but Jolt doesn't reliably register Area3D shapes for dynamic-body children; direct body detection on layer 2 is used instead.
+- **Raycast collision:** Area3D (layer 2) with trimesh shape — `_rebuild_collision()` bakes the CSG mesh after each hole so rays accurately pass through existing damage. Scene-defined `BodyCollision` (BoxShape3D) handles physics separately. `fly_camera.gd` impulse block handles both Area3D and direct RigidBody3D collider hits.
+- **Scene file lesson:** In `.tscn` files, direct children of the root node MUST use `parent="."`, NOT `parent="RootName"`. Wrong paths silently orphan the child nodes at instantiation — no error in-editor, just missing children at runtime causing a cascade of null-reference early returns.
+- **Headless test:** `tests/test_raycast.gd` verifies Area3D presence, layer, and raycast hit path for both enemy and PlankWood. Run with `Godot_v4.6.3-stable_win64_console.exe --headless --path <proj> 2>&1`.
 - **Done when:** enemy patrols, takes persistent holes, tips over at 50% mass loss, 60 fps.
 - Step 2 (after Step 1 confirmed): multi-part enemies (torso + limbs).
 
