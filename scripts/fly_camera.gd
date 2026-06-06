@@ -6,6 +6,7 @@ const MOUSE_SENSITIVITY := 0.0015
 const ENERGY_STEP := 50.0
 const ENERGY_MIN := 0.0
 const ENERGY_MAX := 2500.0
+const MACHINEGUN_INTERVAL := 0.08
 
 @export var shot_energy: float = 60.0
 
@@ -13,6 +14,7 @@ var _yaw := 0.0
 var _pitch := 0.0
 var _energy_label: Label
 var _energy_slider: HSlider
+var _mg_timer: Timer
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -21,6 +23,10 @@ func _ready() -> void:
 	if _energy_slider:
 		_energy_slider.value_changed.connect(_on_slider_changed)
 	_set_energy(shot_energy)
+	_mg_timer = Timer.new()
+	_mg_timer.wait_time = MACHINEGUN_INTERVAL
+	_mg_timer.timeout.connect(_fire)
+	add_child(_mg_timer)
 
 func _set_energy(value: float) -> void:
 	shot_energy = clamp(value, ENERGY_MIN, ENERGY_MAX)
@@ -51,14 +57,20 @@ func _input(event: InputEvent) -> void:
 		_pitch = clamp(_pitch - event.relative.y * MOUSE_SENSITIVITY, -PI * 0.49, PI * 0.49)
 		rotation = Vector3(_pitch, _yaw, 0.0)
 
-	if event is InputEventMouseButton and event.pressed:
-		match event.button_index:
-			MOUSE_BUTTON_LEFT:
-				_fire()
-			MOUSE_BUTTON_WHEEL_UP:
-				_set_energy(shot_energy + ENERGY_STEP)
-			MOUSE_BUTTON_WHEEL_DOWN:
-				_set_energy(shot_energy - ENERGY_STEP)
+	if event is InputEventMouseButton:
+		if event.pressed:
+			match event.button_index:
+				MOUSE_BUTTON_LEFT:
+					_fire()
+				MOUSE_BUTTON_RIGHT:
+					_fire()
+					_mg_timer.start()
+				MOUSE_BUTTON_WHEEL_UP:
+					_set_energy(shot_energy + ENERGY_STEP)
+				MOUSE_BUTTON_WHEEL_DOWN:
+					_set_energy(shot_energy - ENERGY_STEP)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			_mg_timer.stop()
 
 func _process(delta: float) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
