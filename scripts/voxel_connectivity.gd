@@ -21,6 +21,10 @@ static func build_grid(body_size: Vector3, dims: Vector3i, holes: Array) -> Pack
 	voxels.resize(dims.x * dims.y * dims.z)
 	voxels.fill(1)
 	var cell := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
+	# Expand carve by half a voxel cell radially so edge voxels that are partly
+	# inside a cylinder are voided, not left solid. Prevents ghost compound boxes
+	# accumulating at hole perimeters due to center-point sampling drift.
+	var pad: float = max(cell.x, cell.z) * 0.5
 	for hole: Node in holes:
 		if not (hole is CSGCylinder3D):
 			continue
@@ -40,7 +44,7 @@ static func build_grid(body_size: Vector3, dims: Vector3i, holes: Array) -> Pack
 						-body_size.z * 0.5 + (zi + 0.5) * cell.z
 					)
 					var p: Vector3 = inv * lp
-					if Vector2(p.x, p.z).length() <= r and absf(p.y) <= hh:
+					if Vector2(p.x, p.z).length() <= r + pad and absf(p.y) <= hh:
 						voxels[i] = 0
 	return voxels
 
@@ -125,6 +129,7 @@ static func build_grid_with_shapes(body_size: Vector3, dims: Vector3i,
 				for xi: int in range(xi0, xi1 + 1):
 					voxels[xi + yi * dims.x + zi * dims.x * dims.y] = 1
 	# Carve holes (identical to build_grid)
+	var pad_s: float = max(cell.x, cell.z) * 0.5
 	for hole: Node in holes:
 		if not (hole is CSGCylinder3D):
 			continue
@@ -140,7 +145,7 @@ static func build_grid_with_shapes(body_size: Vector3, dims: Vector3i,
 						continue
 					var lp := origin + Vector3((xi + 0.5) * cell.x, (yi + 0.5) * cell.y, (zi + 0.5) * cell.z)
 					var p: Vector3 = inv * lp
-					if Vector2(p.x, p.z).length() <= r and absf(p.y) <= hh:
+					if Vector2(p.x, p.z).length() <= r + pad_s and absf(p.y) <= hh:
 						voxels[i] = 0
 	return voxels
 
@@ -198,6 +203,7 @@ static func carve_holes(voxels: PackedByteArray, body_size: Vector3,
 		dims: Vector3i, holes: Array) -> void:
 	var cell   := Vector3(body_size.x / dims.x, body_size.y / dims.y, body_size.z / dims.z)
 	var origin := Vector3(-body_size.x * 0.5, -body_size.y * 0.5, -body_size.z * 0.5)
+	var pad: float = max(cell.x, cell.z) * 0.5
 	for hole: Node in holes:
 		if not (hole is CSGCylinder3D):
 			continue
@@ -214,7 +220,7 @@ static func carve_holes(voxels: PackedByteArray, body_size: Vector3,
 					var lp := origin + Vector3(
 						(xi + 0.5) * cell.x, (yi + 0.5) * cell.y, (zi + 0.5) * cell.z)
 					var p: Vector3 = inv * lp
-					if Vector2(p.x, p.z).length() <= r and absf(p.y) <= hh:
+					if Vector2(p.x, p.z).length() <= r + pad and absf(p.y) <= hh:
 						voxels[i] = 0
 
 # Body-local centre of a voxel index (origin at the body centre).
