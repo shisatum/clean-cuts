@@ -169,9 +169,20 @@ func _check_connectivity() -> void:
 	if new_holes.size() > 0:
 		VoxelConnectivity.carve_holes(_voxels, body_size, _dims, new_holes)
 		_carved_count = holes.size()
-	mass_changed.emit(_voxels.count(1))
+	var solid_count: int = _voxels.count(1)
+	mass_changed.emit(solid_count)
+	if solid_count == 0:
+		_wake_nearby_sleeping()
+		collision_layer = 0
+		collision_mask  = 0
+		if is_instance_valid(_csg):
+			_csg.visible = false
+		queue_free()
+		return
 	var islands: Array[PackedInt32Array] = VoxelConnectivity.find_islands(_voxels, _dims)
 	if islands.size() < 2:
+		if not islands.is_empty():
+			_rebuild_compound_from_island(islands[0])
 		return
 	_severing = true
 
@@ -275,6 +286,19 @@ func _on_sleeping_state_changed() -> void:
 		return
 	if not sleeping:
 		_wake_nearby_sleeping()
+
+func _rebuild_compound_from_island(island: PackedInt32Array) -> void:
+	var labels := PackedInt32Array()
+	labels.resize(_voxels.size())
+	labels.fill(-1)
+	for idx: int in island:
+		labels[idx] = 0
+	var boxes: Array[Dictionary] = VoxelConnectivity.decompose_island(labels, 0, _dims)
+	_compound_boxes.clear()
+	for box_d: Dictionary in boxes:
+		var ba: Dictionary = VoxelConnectivity.aabb_to_local(box_d.mn, box_d.mx, _dims, body_size)
+		_compound_boxes.append({center = ba.center, size = ba.size})
+	_apply_compound_boxes()
 
 func _wake_nearby_sleeping() -> void:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
