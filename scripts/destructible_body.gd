@@ -32,6 +32,7 @@ var _collision_pending: bool    = false
 var _voxels: PackedByteArray    = PackedByteArray()
 var _dims: Vector3i             = Vector3i.ZERO
 var _carved_count: int          = 0
+var _initial_solid_count: int   = 0
 var _hole_records: Array[Dictionary] = []
 
 # Called automatically for scene-placed nodes (planks).
@@ -171,7 +172,8 @@ func _check_connectivity() -> void:
 		_carved_count = holes.size()
 	var solid_count: int = _voxels.count(1)
 	mass_changed.emit(solid_count)
-	if solid_count == 0:
+	var dust_threshold: int = int(_initial_solid_count * min_frag_fraction)
+	if solid_count <= dust_threshold:
 		_wake_nearby_sleeping()
 		collision_layer = 0
 		collision_mask  = 0
@@ -265,7 +267,8 @@ func _init_voxels() -> void:
 		_voxels = VoxelConnectivity.build_grid_with_shapes(body_size, _dims, body_boxes, [])
 	else:
 		_voxels = VoxelConnectivity.build_grid(body_size, _dims, [])
-	_carved_count = 0
+	_carved_count         = 0
+	_initial_solid_count  = _voxels.count(1)
 
 func _rebuild_collision() -> void:
 	_collision_pending = false
