@@ -33,10 +33,12 @@ func _do_spawn() -> void:
 	if cam and cam.get("enemy_speed") != null:
 		enemy.move_speed = cam.enemy_speed
 	get_parent().add_child(enemy)
-	enemy.tree_exited.connect(_on_enemy_gone)
+	# Respawn on death, not on the corpse being freed — corpses can persist
+	# (despawn_on_death) without stalling the next spawn.
+	enemy.died.connect(_on_enemy_died)
 	print("[EnemySpawner] spawned enemy at ", enemy.position)
 
-func _on_enemy_gone() -> void:
+func _on_enemy_died() -> void:
 	if _spawn_pending or not is_inside_tree():
 		return
 	_spawn_pending = true

@@ -19,6 +19,9 @@ const CSG_BAKE_THRESHOLD := 20
 ## Connect to this signal to track mass loss (e.g. for enemy health thresholds).
 signal mass_changed(solid_count: int)
 signal collision_rebuilt(shape_node: CollisionShape3D)
+## Emitted after a fracture with the spawned fragment bodies, just before this body
+## frees itself. Lets an owner re-anchor joints that pointed at this (dying) body.
+signal fractured(fragments: Array)
 
 var _csg: CSGCombiner3D
 var _ray_col: CollisionShape3D
@@ -202,13 +205,16 @@ func _check_connectivity() -> void:
 		if islands[i].size() >= min_vox:
 			valid.append(i)
 
+	var frags: Array[DestructibleBody] = []
 	for i: int in valid:
 		var b: Dictionary    = VoxelConnectivity.island_bounds(islands[i], _dims)
 		var aabb: Dictionary = VoxelConnectivity.aabb_to_local(b.mn, b.mx, _dims, body_size)
 		var ac: Vector3      = aabb.center
 		var sz: Vector3      = aabb.size
 		var boxes: Array[Dictionary] = VoxelConnectivity.decompose_island(labels, i, _dims)
-		_spawn_fragment(ac, sz, body_material, boxes)
+		frags.append(_spawn_fragment(ac, sz, body_material, boxes))
+	# Let an owner (e.g. an enemy) re-anchor joints to the fragments before we free.
+	fractured.emit(frags)
 	# Wake nearby sleeping bodies before disappearing. Jolt intentionally does not
 	# wake neighbors when a body is removed — this is the GDScript equivalent of
 	# ActivateBodiesInAABox, called at the only moment we know support is gone.
@@ -225,7 +231,7 @@ func _check_connectivity() -> void:
 # built from greedy-decomposed boxes (exact voxel coverage) so any fracture
 # topology — straight, L-shaped, circular — renders without ghost geometry.
 func _spawn_fragment(ac: Vector3, sz: Vector3, body_mat: Material,
-		boxes: Array[Dictionary]) -> void:
+		boxes: Array[Dictionary]) -> DestructibleBody:
 	var frag := DestructibleBody.new()
 	get_parent().add_child(frag)
 	frag.setup(sz, material_data, body_mat, false)
@@ -245,6 +251,7 @@ func _spawn_fragment(ac: Vector3, sz: Vector3, body_mat: Material,
 	var out: Vector3 = global_transform.basis * ac
 	out = out.normalized() if out.length_squared() > 1e-6 else Vector3.UP
 	frag.linear_velocity  = _last_hit_dir * 0.5 + out * 0.8
+	return frag
 
 # Returns true if the cylinder (in body-local space) overlaps this fragment's
 # axis-aligned bounding box. Used to assign holes to fragments at split time.

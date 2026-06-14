@@ -1,26 +1,108 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/enemy.gd" id="1"]
-[ext_resource type="Resource" path="res://resources/wood.tres" id="2"]
+[ext_resource type="Script" path="res://scripts/enemy_torso.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/destructible_body.gd" id="3"]
+[ext_resource type="Resource" path="res://resources/wood.tres" id="4"]
 
 [sub_resource type="StandardMaterial3D" id="MatEnemy"]
 albedo_color = Color(0.75, 0.25, 0.2, 1)
 
-[sub_resource type="BoxShape3D" id="BodyShape"]
-size = Vector3(0.5, 1.8, 0.5)
+[sub_resource type="BoxShape3D" id="TorsoShape"]
+size = Vector3(0.5, 1.2, 0.45)
 
-[node name="Enemy" type="RigidBody3D"]
+[sub_resource type="BoxShape3D" id="ArmShape"]
+size = Vector3(0.18, 1.0, 0.18)
+
+[sub_resource type="BoxShape3D" id="HeadShape"]
+size = Vector3(0.34, 0.34, 0.34)
+
+[node name="Enemy" type="Node3D"]
+script = ExtResource("1")
+head = NodePath("Head")
+
+[node name="Torso" type="RigidBody3D" parent="."]
 collision_layer = 1
 collision_mask = 1
-script = ExtResource("1")
-material_data = ExtResource("2")
+script = ExtResource("2")
+material_data = ExtResource("4")
 body_material = SubResource("MatEnemy")
+body_size = Vector3(0.5, 1.2, 0.45)
 
-[node name="BodyCollision" type="CollisionShape3D" parent="."]
-shape = SubResource("BodyShape")
+[node name="BodyCollision" type="CollisionShape3D" parent="Torso"]
+shape = SubResource("TorsoShape")
 
-[node name="Csg" type="CSGCombiner3D" parent="."]
+[node name="Csg" type="CSGCombiner3D" parent="Torso"]
 
-[node name="Body" type="CSGBox3D" parent="Csg"]
-size = Vector3(0.5, 1.8, 0.5)
+[node name="Body" type="CSGBox3D" parent="Torso/Csg"]
+size = Vector3(0.5, 1.2, 0.45)
 material = SubResource("MatEnemy")
+
+[node name="ArmL" type="RigidBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3, 0, 0)
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("3")
+material_data = ExtResource("4")
+body_material = SubResource("MatEnemy")
+body_size = Vector3(0.18, 1.0, 0.18)
+
+[node name="BodyCollision" type="CollisionShape3D" parent="ArmL"]
+shape = SubResource("ArmShape")
+
+[node name="Csg" type="CSGCombiner3D" parent="ArmL"]
+
+[node name="Body" type="CSGBox3D" parent="ArmL/Csg"]
+size = Vector3(0.18, 1.0, 0.18)
+material = SubResource("MatEnemy")
+
+[node name="ArmR" type="RigidBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0, 0)
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("3")
+material_data = ExtResource("4")
+body_material = SubResource("MatEnemy")
+body_size = Vector3(0.18, 1.0, 0.18)
+
+[node name="BodyCollision" type="CollisionShape3D" parent="ArmR"]
+shape = SubResource("ArmShape")
+
+[node name="Csg" type="CSGCombiner3D" parent="ArmR"]
+
+[node name="Body" type="CSGBox3D" parent="ArmR/Csg"]
+size = Vector3(0.18, 1.0, 0.18)
+material = SubResource("MatEnemy")
+
+[node name="Head" type="RigidBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.74, 0)
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("3")
+material_data = ExtResource("4")
+body_material = SubResource("MatEnemy")
+body_size = Vector3(0.34, 0.34, 0.34)
+
+[node name="BodyCollision" type="CollisionShape3D" parent="Head"]
+shape = SubResource("HeadShape")
+
+[node name="Csg" type="CSGCombiner3D" parent="Head"]
+
+[node name="Body" type="CSGBox3D" parent="Head/Csg"]
+size = Vector3(0.34, 0.34, 0.34)
+material = SubResource("MatEnemy")
+
+[node name="WeldHead" type="Generic6DOFJoint3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.74, 0)
+node_a = NodePath("../Torso")
+node_b = NodePath("../Head")
+
+[node name="WeldL" type="Generic6DOFJoint3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3, 0, 0)
+node_a = NodePath("../Torso")
+node_b = NodePath("../ArmL")
+
+[node name="WeldR" type="Generic6DOFJoint3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0, 0)
+node_a = NodePath("../Torso")
+node_b = NodePath("../ArmR")
